@@ -1,0 +1,29 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Sensitive files / Secrets
+*.env
+*.env.*
+*.pem
+*.key
+*.crt
+id_rsa
+id_ed25519
+*.log
+secrets/
+credentials.json

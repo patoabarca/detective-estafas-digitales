@@ -1,0 +1,6 @@
+# Motor funcional:
+# El motor principal (scripts/) NO requiere dependencias externas
+# y funciona 100% con la biblioteca estándar de Python (Zero Network / Zero External Bloat).
+
+# Dependencias para ejecución de pruebas unitarias y de integración:
+pytest>=8.0.0

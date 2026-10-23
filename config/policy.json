@@ -1,0 +1,36 @@
+{
+  "skill_name": "detective-estafas-digitales",
+  "version": "1.0.0",
+  "description": "Skill de análisis estático, modular y seguro para detección de estafas digitales",
+  "runtime_constraints": {
+    "allow_network": false,
+    "allow_shell_execution": false,
+    "max_input_chars": 15000,
+    "max_file_size_kb": 256,
+    "allowed_extensions": [".txt"],
+    "save_user_messages": false,
+    "allowed_directories": ["examples"]
+  },
+  "security": {
+    "treat_input_as_untrusted": true,
+    "ignore_embedded_instructions": true,
+    "mask_sensitive_information": true,
+    "prohibit_dynamic_code_exec": true,
+    "block_path_traversal": true
+  },
+  "weights": {
+    "prompt_injection_attempt": 45,
+    "credential_harvesting": 40,
+    "banking_threat_urgency": 35,
+    "advance_fee_fraud": 35,
+    "suspicious_url": 30,
+    "urgency_generic": 15,
+    "unverified_entity_impersonation": 15,
+    "debin_or_transfer_trick": 30
+  },
+  "thresholds": {
+    "alto": 50,
+    "medio": 20,
+    "bajo": 0
+  }
+}

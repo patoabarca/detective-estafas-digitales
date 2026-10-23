@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DetectiveEstafasReport",
+  "type": "object",
+  "required": [
+    "status",
+    "timestamp",
+    "risk_assessment",
+    "indicators_detected",
+    "url_analysis",
+    "prompt_injection_detected",
+    "limitations",
+    "recommendations",
+    "non_technical_explanation"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["success", "error"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "risk_assessment": {
+      "type": "object",
+      "required": ["level", "score", "summary", "activated_rules"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["BAJO", "MEDIO", "ALTO", "INDETERMINADO"]
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "summary": {
+          "type": "string"
+        },
+        "activated_rules": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "indicators_detected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "severity", "description", "evidence_snippets"],
+        "properties": {
+          "id": { "type": "string" },
+          "category": { "type": "string" },
+          "severity": { "type": "string", "enum": ["BAJA", "MEDIA", "ALTA", "CRITICA"] },
+          "description": { "type": "string" },
+          "evidence_snippets": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "url_analysis": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["raw_url", "scheme", "domain", "is_ip_address", "has_punycode", "findings"],
+        "properties": {
+          "raw_url": { "type": "string" },
+          "scheme": { "type": "string" },
+          "domain": { "type": "string" },
+          "is_ip_address": { "type": "boolean" },
+          "has_punycode": { "type": "boolean" },
+          "findings": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "prompt_injection_detected": {
+      "type": "boolean"
+    },
+    "prompt_injection_details": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "non_technical_explanation": {
+      "type": "string"
+    }
+  }
+}

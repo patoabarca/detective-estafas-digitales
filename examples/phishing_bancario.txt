@@ -1,0 +1,10 @@
+Estimado cliente de Banco Galicia:
+Detectamos una actividad sospechosa y un inicio de sesión no autorizado en su cuenta de Home Banking.
+Por motivos de seguridad informática, su cuenta será suspendida y bloqueada preventivamente en las próximas 2 horas.
+
+Para evitar el bloqueo inmediato y verificar su identidad, ingrese de forma urgente al siguiente enlace seguro:
+https://galicia-validacion.seguridad-bancaria.online/login?session_id=892348
+
+Se le solicitará reingresar su documento, usuario, clave digital y el Token de Seguridad de su aplicación.
+Atentamente,
+Departamento de Prevención de Fraudes de Banco Galicia.
