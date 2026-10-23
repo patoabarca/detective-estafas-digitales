@@ -138,6 +138,8 @@ class ReportGenerator:
             "risk_assessment": {
                 "level": level,
                 "score": risk_data.get("score", 0),
+                "score_type": "heuristic_severity_score",
+                "score_disclaimer": "Puntaje heurístico acumulativo (0-100). No representa una probabilidad estadística de fraude.",
                 "summary": risk_data.get("summary", ""),
                 "activated_rules": risk_data.get("activated_rules", []),
             },
@@ -170,7 +172,7 @@ class ReportGenerator:
             "# 🛡️ Informe de Detective de Estafas Digitales",
             "",
             f"### Resultado de la Evaluación: {badge}",
-            f"- **Puntaje de Severidad:** {score}/100",
+            f"- **Puntaje de Severidad (Escala Heurística):** {score}/100 *(Puntaje acumulativo de riesgo; no representa una probabilidad estadística)*",
             f"- **Fecha y Hora del Análisis:** `{report_dict.get('timestamp')}`",
             "",
             "## 🗣️ Explicación en Lenguaje Sencillo",

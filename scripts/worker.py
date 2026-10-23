@@ -21,13 +21,18 @@ from pathlib import Path
 import sys
 from typing import Any, Dict, Optional
 
+# Asegurar que el directorio de scripts esté en sys.path para importación robusta
+SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
 # Importación de los módulos internos de scripts/
 from analyzer import TextAnalyzer
 from report_generator import ReportGenerator
 from risk_classifier import RiskClassifier
 from url_analyzer import analyze_urls_in_text
 
-# Asegurar codificación UTF-8 en terminales Windows
+# Asegurar codificación UTF-8 en terminales y flujos de entrada/salida
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -36,6 +41,11 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     try:
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stdin and hasattr(sys.stdin, "reconfigure"):
+    try:
+        sys.stdin.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 

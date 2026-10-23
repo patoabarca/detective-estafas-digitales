@@ -38,6 +38,12 @@
         "summary": {
           "type": "string"
         },
+        "score_type": {
+          "type": "string"
+        },
+        "score_disclaimer": {
+          "type": "string"
+        },
         "activated_rules": {
           "type": "array",
           "items": { "type": "string" }
