@@ -8,6 +8,7 @@ No utiliza probabilidades estadísticas arbitrarias ni opacas.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Tuple
 
 
@@ -43,14 +44,26 @@ class RiskClassifier:
         Calcula el nivel de riesgo y genera la justificación basada en evidencia.
         """
         cleaned_text = raw_text.strip() if raw_text else ""
+        indicators = text_analysis.get("indicators", [])
 
-        # 1. Caso INDETERMINADO: texto vacío o insuficiente para un análisis responsable
-        if not cleaned_text or len(cleaned_text) < 10:
+        # 1. Caso INDETERMINADO:
+        # a) Texto inexistente o con longitud inferior a 15 caracteres
+        # b) Texto breve (< 45 caracteres) con llamados a la acción aislados sin enlace ni entidad verificable
+        is_very_short = len(cleaned_text) < 45
+        has_isolated_action = bool(
+            re.search(
+                r"(?i)\b(?:actualiz[aá]|verific[aá]|confirm[aá]|ingres[aá]|hac[eé]\s+clic|click\s+aqu[ií]|segu[ií]\s+el\s+enlace)\b",
+                cleaned_text,
+            )
+        )
+        has_no_evidence = len(indicators) == 0 and len(url_analyses) == 0
+
+        if not cleaned_text or len(cleaned_text) < 15 or (is_very_short and has_isolated_action and has_no_evidence):
             return {
                 "level": "INDETERMINADO",
                 "score": 0,
-                "summary": "El texto proporcionado es inexistente o contiene información insuficiente para emitir una evaluación de riesgo responsable.",
-                "activated_rules": ["REGLA-INDET: Longitud de texto insuficiente (< 10 caracteres)."],
+                "summary": "El contenido disponible es demasiado breve, fragmentado o ambiguo para emitir una evaluación de riesgo fundada. No se identificaron enlaces ni entidades verificables.",
+                "activated_rules": ["REGLA-INDET: Información o contexto insuficiente para clasificar el riesgo de forma concluyente."],
             }
 
         score = 0
@@ -133,9 +146,9 @@ class RiskClassifier:
                     "REGLA-URL-04 (+20 pts): Enlace con credenciales embebidas (patrón user:pass@host)."
                 )
             if has_suspicious_tld and not has_misleading_subdomain:
-                score += 15
+                score += 20
                 activated_rules.append(
-                    "REGLA-URL-05 (+15 pts): Enlace con extensión de dominio frecuentemente desechable."
+                    "REGLA-URL-05 (+20 pts): Enlace con extensión de dominio frecuentemente desechable."
                 )
 
         # Limitar puntaje máximo a 100

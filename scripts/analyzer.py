@@ -156,11 +156,14 @@ class TextAnalyzer:
 
     def _detect_blocking_threats(self, text: str) -> Tuple[bool, List[str]]:
         patterns = [
-            r"(?i)\b(?:cuenta(?:\s+bancaria|\s+de\s+correo)?|acceso|tarjeta|servicio|l[ií]nea(?:\s+m[oó]vil)?|buz[oó]n|perfil)\s+(?:ser[aá]\s+)?(?:suspendid[oa]|bloquead[oa]|cancelad[oa]|inhabilitad[oa]|eliminad[oa]|dad[oa]\s+de\s+baja)\b",
+            r"(?i)\b(?:cuenta(?:\s+bancaria|\s+de\s+correo)?|acceso|tarjeta|servicio|l[ií]nea(?:\s+m[oó]vil)?|buz[oó]n|perfil)\s+(?:ser[aá]\s+|permanecer[aá]\s+)?(?:suspendid[oa]|bloquead[oa]|cancelad[oa]|inhabilitad[oa]|eliminad[oa]|dad[oa]\s+de\s+baja|restringid[oa])\b",
             r"(?i)\b(?:procederemos\s+a\s+|vamos\s+a\s+|se\s+proceder[aá]\s+a\s+)?(?:dar\s+de\s+baja|suspender|bloquear|inhabilitar|cancelar|eliminar)\s+(?:su\s+|tu\s+|la\s+|el\s+)?(?:cuenta(?:\s+de\s+correo)?|servicio|l[ií]nea(?:\s+m[oó]vil)?|buz[oó]n|correo|acceso|suscripci[oó]n)\b",
             r"(?i)\b(?:bloqueo|suspensi[oó]n|inhabilitaci[oó]n|cancelaci[oó]n|baja|eliminaci[oó]n)\s+(?:inmediat[oa]|preventiv[oa]|definitiv[oa]|temporal)\b",
-            r"(?i)\b(?:actividad\s+sospechosa|actividad\s+inusual|acceso\s+no\s+autorizado|inicio\s+de\s+sesi[oó]n\s+sospechoso|transferencia\s+saliente\s+no\s+reconocida|denunciado\s+por\s+reiteradas\s+infracciones)\b",
+            r"(?i)\b(?:actividad\s+(?:irregular|sospechosa|inusual|an[oó]mala)|acceso\s+no\s+autorizado|inicio\s+de\s+sesi[oó]n\s+(?:sospechoso|irregular)|transferencia\s+saliente\s+no\s+reconocida|denunciado\s+por\s+reiteradas\s+infracciones)\b",
             r"(?i)\b(?:evit(?:ar|e)|para\s+evitar)\s+(?:el\s+bloqueo|la\s+suspensi[oó]n|el\s+cierre|la\s+baja|la\s+cancelaci[oó]n|la\s+eliminaci[oó]n)\b",
+            r"(?i)\b(?:cuenta|servicio|acceso|usuario)\s+(?:ser[aá]\s+|permanecer[aá]\s+)?(?:inhabilitad[oa]|suspendid[oa]|bloquead[oa]|restringid[oa])\s*(?:si\s+no|a\s+menos\s+que|hasta\s+que)\b",
+            r"(?i)\b(?:el\s+env[ií]o|el\s+paquete)\s+(?:ser[aá]\s+)?(?:devuelto\s+al\s+(?:dep[oó]sito|remitente)|retenido|cancelado)\b",
+            r"(?i)\b(?:falta\s+validar\s+(?:el\s+)?domicilio|direcci[oó]n\s+incompleta|problemas?\s+con\s+la\s+entrega)\b",
             r"(?i)\b[uú]ltimo\s+aviso(?:\s+antes\s+de)?\b",
             r"(?i)\b(?:eliminaci[oó]n|cancelaci[oó]n|cierre|desactivaci[oó]n)\s+(?:definitiv[oa]|inmediat[oa])?\s*(?:de\s+(?:su\s+|tu\s+)?(?:cuenta|correo|servicio|buz[oó]n))\b",
             r"(?i)\b(?:dejaremos\s+de\s+(?:procesar|enviar|recibir)|suspenderemos\s+el\s+env[ií]o\s+de|interrupci[oó]n\s+del\s+servicio|superado\s+el\s+\d+%\s+del\s+l[ií]mite|l[ií]mite\s+de\s+almacenamiento)\b",
@@ -178,10 +181,11 @@ class TextAnalyzer:
             r"(?i)\b(?:plazo\s+(?:perentorio|improrrogable|l[ií]mite(?:\s+de\s+\d{1,2}\s+(?:horas|hs|d[ií]as))?))\b",
             r"(?i)\b(?:en\s+un\s+plazo\s+de\s+\d{1,2}\s+(?:horas|hs|d[ií]as))\b",
             r"(?i)\b(?:antes\s+de\s+las\s+\d{1,2}(?::\d{2})?\s*(?:hs|horas)?)\b",
-            r"(?i)\b(?:de\s+forma\s+urgente|urgente|inmediatamente|a\s+la\s+brevedad)\b",
+            r"(?i)\b(?:de\s+forma\s+urgente|urgente|inmediatamente|a\s+la\s+brevedad|ahora\s+mismo)\b",
             r"(?i)\b(?:quedan\s+\d{1,2}\s+minutos|tiempo\s+l[ií]mite)\b",
             r"(?i)\b(?:(?:bloquead[oa]|suspendid[oa]|vence)\s+hoy|solo\s+por\s+hoy|hoy\s+mismo)\b",
-            r"(?i)\b(?:al\s+finalizar\s+la\s+jornada|al\s+cierre\s+del\s+d[ií]a|en\s+el\s+d[ií]a\s+de\s+hoy|en\s+el\s+d[ií]a\s+de\s+la\s+fecha)\b",
+            r"(?i)\b(?:al\s+finalizar\s+(?:la\s+jornada|el\s+d[ií]a)|al\s+cierre\s+(?:de\s+la\s+jornada|del\s+d[ií]a)|antes\s+del\s+cierre\s+(?:de\s+la\s+jornada|del\s+d[ií]a)|al\s+t[eé]rmino\s+del\s+d[ií]a)\b",
+            r"(?i)\b(?:vence\s+en\s+(?:\d+|cinco|diez|quince|veinte)\s+minutos|validez\s+de\s+\d+\s+minutos)\b",
             r"(?i)\b[uú]ltima\s+vez\s+que\s+(?:te|le|se)\s+informa\w*\b",
             r"(?i)\b[uú]ltimo\s+aviso\b",
         ]
@@ -194,11 +198,14 @@ class TextAnalyzer:
     def _detect_credential_harvesting(self, text: str) -> Tuple[bool, List[str]]:
         patterns = [
             r"(?i)\b(?:token(?:\s+de\s+seguridad)?|clave\s+digital|clave\s+de\s+home\s+banking|clave\s+de\s+cajero|tarjeta\s+de\s+coordenadas|pin(?:\s+de\s+(?:cajero|autogesti[oó]n|seguridad))?)\b",
-            r"(?i)\b(?:c[oó]digo\s+de\s+(?:seguridad|verificaci[oó]n|\d+\s+d[ií]gitos))\b",
-            r"(?i)\b(?:reingresar|reingres[ae]|reingresando|ingresar|ingres[ae]|ingresando|confirmar|confirm[ae]|confirmando|validar|valid[ae]|validando|actualizar|actualic[ee]|actualizando|solicitar|solicit[ae]|solicitando|compartir|compart[ae]|compartiendo|enviar|env[ií][ae]|enviando|pedir|pid[ae])\s+(?:su\s+|tu\s+)?(?:usuario|clave|documento|contrase[ñn]a|token|pin|c[oó]digo|dni|cbu|cvu)\b",
+            r"(?i)\b(?:c[oó]digo\s+(?:de\s+seguridad|de\s+verificaci[oó]n|sms|otp|(?:de\s+)?(?:\d+|cuatro|seis|ocho)\s+d[ií]gitos))\b",
+            r"(?i)\b(?:c[oó]digo(?:\s+que)?\s+(?:te|le)\s+(?:acaba\s+de\s+llegar|lleg[oó]|enviamos)\s*(?:por\s+sms|por\s+mensaje)?)\b",
+            r"(?i)\b(?:reingresar|reingres[ae]|reingresando|ingresar|ingres[ae]|ingresando|confirmar|confirm[ae]|confirmando|validar|valid[ae]|validando|actualizar|actualic[ee]|actualizando|solicitar|solicit[ae]|solicitando|compartir|compart[ae]s?|compartiendo|pas[ae]s?|enviar|env[ií][ae]s?|enviando|pedir|pid[ae])\s+(?:el\s+|la\s+|su\s+|tu\s+|un\s+)?(?:usuario|clave|documento|contrase[ñn]a|token|pin|c[oó]digo|dni|cbu|cvu)\b",
+            r"(?i)\b(?:confirmar|confirm[aáeé]|confirmando|validar|valid[aáeé]|validando|actualizar|actualic[ee]|actualizando)\s+(?:sus?\s+|tus?\s+)?(?:datos(?:\s+personales)?|identidad|domicilio|titularidad)\b",
             r"(?i)\b(?:enlace\s+para\s+verificar\s+(?:su\s+)?identidad|formulario\s+oficial\s+para\s+(?:verificar|apelar)|cancelar\s+(?:la\s+operaci[oó]n|la\s+transacci[oó]n|el\s+retiro))\b",
             r"(?i)\b(?:complet[aáeé]|completando|realiz[aáeé]|realizando|hac[eé]|haga|inici[aáeé])\s+(?:la\s+|el\s+|una\s+|su\s+|tu\s+|nuestra\s+)?verificaci[oó]n(?:\s+de\s+(?:seguridad|identidad|datos|cuenta|titularidad))?\b",
             r"(?i)\b(?:verificar|validar|actualizar)\s+(?:la\s+actualizaci[oó]n|su\s+cuenta|tu\s+cuenta|sus\s+datos|tus\s+datos|sus?\s+credenciales|m[eé]todo\s+de\s+pago|tarjeta\s+de\s+cr[eé]dito|buz[oó]n)\b",
+            r"(?i)\b(?:centro\s+de\s+(?:verificaci[oó]n|seguridad|actualizaci[oó]n)|complete\s+el\s+procedimiento(?:\s+solicitado)?)\b",
             r"(?i)\b(?:verificaci[oó]n\s+de\s+seguridad\s+obligatoria|portal\s+de\s+seguridad)\b",
         ]
         snippets: List[str] = []
@@ -230,8 +237,8 @@ class TextAnalyzer:
 
     def _detect_advance_fee(self, text: str) -> Tuple[bool, List[str]]:
         patterns = [
-            r"(?i)\b(?:abonar|pagar|transferir|abon[aá]|transfer[ií])\s+(?:la\s+)?(?:tasa|seguro\s+postal|estampillado|gastos\s+administrativos|arancel|flete)\b",
-            r"(?i)\b(?:para\s+coordinar\s+la\s+entrega|para\s+liberar\s+el\s+(?:premio|paquete|env[ií]o))\s+(?:deb[eé]s|debe|abon[aá]|pag[aá])\b",
+            r"(?i)\b(?:abonar|pagar|transferir|abon[aáeé]|pag[aáeé]|transfer[ií])\s+(?:el\s+|la\s+|los\s+)?(?:costo\s+de\s+(?:gesti[oó]n|env[ií]o|entrega|reprogramaci[oó]n)|tasa|seguro\s+postal|estampillado|gastos\s+administrativos|arancel|flete)\b",
+            r"(?i)\b(?:para\s+(?:reprogramar|coordinar|confirmar)\s+la\s+entrega|para\s+liberar\s+el\s+(?:premio|paquete|env[ií]o))\b",
             r"(?i)\b(?:tasa\s+de\s+aduana|estampillado\s+oficial|seguro\s+de\s+env[ií]o)\b",
             r"(?i)\b(?:si\s+no\s+realiz[aá]s\s+el\s+pago\s+el\s+premio\s+pasar[aá])\b",
         ]
@@ -278,6 +285,7 @@ class TextAnalyzer:
             "Mi Argentina": r"(?i)\b(?:mi\s+argentina)\b",
             "Correo Argentino": r"(?i)\b(?:correo\s+argentino)\b",
             "WhatsApp Oficial": r"(?i)\b(?:soporte\s+de\s+whatsapp|equipo\s+de\s+whatsapp)\b",
+            "Soporte Técnico": r"(?i)\b(?:soy\s+del\s+soporte(?:\s+t[eé]cnico)?|equipo\s+de\s+soporte(?:\s+t[eé]cnico)?|servicio\s+t[eé]cnico|mesa\s+de\s+ayuda)\b",
         }
 
         detected_entities: List[str] = []

@@ -60,6 +60,11 @@ DECEPTIVE_SECURITY_KEYWORDS = [
     "tramites",
     "facturacion",
     "cobros",
+    "confirmacion",
+    "entregas",
+    "paquetes",
+    "envios",
+    "gestion",
 ]
 
 # TLDs comúnmente asociados a dominios desechables o de bajo costo para campañas de phishing
