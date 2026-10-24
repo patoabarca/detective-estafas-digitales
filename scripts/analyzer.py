@@ -161,6 +161,9 @@ class TextAnalyzer:
             r"(?i)\b(?:actividad\s+sospechosa|actividad\s+inusual|acceso\s+no\s+autorizado|inicio\s+de\s+sesi[oó]n\s+sospechoso)\b",
             r"(?i)\b(?:evit(?:ar|e)|para\s+evitar)\s+(?:el\s+bloqueo|la\s+suspensi[oó]n|el\s+cierre)\b",
             r"(?i)\b[uú]ltimo\s+aviso\s+antes\s+de\b",
+            r"(?i)\b(?:eliminaci[oó]n|cancelaci[oó]n|cierre)\s+(?:definitiv[oa]|inmediat[oa])?\s*(?:de\s+(?:su\s+|tu\s+)?(?:cuenta|correo|servicio))\b",
+            r"(?i)\b(?:dejaremos\s+de\s+procesar|suspenderemos\s+el\s+env[ií]o\s+de|interrupci[oó]n\s+del\s+servicio)\b",
+            r"(?i)\b(?:cuenta|correo|servicio)\s+(?:ser[aá]\s+)?(?:eliminad[oa]|borrad[oa]|dad[oa]\s+de\s+baja)\b",
         ]
         snippets: List[str] = []
         for pat in patterns:
@@ -170,12 +173,14 @@ class TextAnalyzer:
 
     def _detect_urgency(self, text: str) -> Tuple[bool, List[str]]:
         patterns = [
-            r"(?i)\b(?:en\s+las\s+pr[oó]ximas\s+\d{1,2}\s+(?:horas|hs|minutos|min))\b",
+            r"(?i)\b(?:en\s+las\s+pr[oó]ximas\s+(?:\d{1,2}\s+)?(?:horas|hs|minutos|min))\b",
             r"(?i)\b(?:plazo\s+de\s+\d{1,2}\s+(?:horas|hs))\b",
             r"(?i)\b(?:antes\s+de\s+las\s+\d{1,2}(?::\d{2})?\s*(?:hs|horas)?)\b",
             r"(?i)\b(?:de\s+forma\s+urgente|urgente|inmediatamente|a\s+la\s+brevedad|plazo\s+l[ií]mite)\b",
             r"(?i)\b(?:quedan\s+\d{1,2}\s+minutos|tiempo\s+l[ií]mite)\b",
             r"(?i)\b(?:(?:bloquead[oa]|suspendid[oa]|vence)\s+hoy|solo\s+por\s+hoy|hoy\s+mismo)\b",
+            r"(?i)\b[uú]ltima\s+vez\s+que\s+(?:te|le|se)\s+informa\w*\b",
+            r"(?i)\b[uú]ltimo\s+aviso\b",
         ]
         snippets: List[str] = []
         for pat in patterns:
@@ -191,6 +196,9 @@ class TextAnalyzer:
             r"(?i)\b(?:pin\s+de\s+cajero|tarjeta\s+de\s+coordenadas)\b",
             r"(?i)\b(?:enlace\s+para\s+verificar\s+(?:su\s+)?identidad)\b",
             r"(?i)\b(?:solicitud\s+de\s+(?:su\s+)?(?:clave|contrase[ñn]a|token))\b",
+            r"(?i)\b(?:complet[aáeé]|realiz[aáeé]|hac[eé]|haga)\s+(?:su\s+|tu\s+|nuestra\s+)?verificaci[oó]n(?:\s+de\s+seguridad)?\b",
+            r"(?i)\b(?:verificar|actualizar)\s+(?:la\s+actualizaci[oó]n|su\s+cuenta|tu\s+cuenta|sus\s+datos|tus\s+datos)\b",
+            r"(?i)\b(?:verificaci[oó]n\s+de\s+seguridad\s+obligatoria)\b",
         ]
         snippets: List[str] = []
         for pat in patterns:

@@ -73,6 +73,8 @@ def init_session_state() -> None:
         st.session_state["ocr_status"] = None
     if "current_mode" not in st.session_state:
         st.session_state["current_mode"] = "text"
+    if "last_uploaded_file_sig" not in st.session_state:
+        st.session_state["last_uploaded_file_sig"] = None
 
 
 def reset_session_state() -> None:
@@ -83,6 +85,7 @@ def reset_session_state() -> None:
     st.session_state["ocr_url_warnings"] = []
     st.session_state["ocr_status"] = None
     st.session_state["current_mode"] = "text"
+    st.session_state["last_uploaded_file_sig"] = None
 
 
 
@@ -193,6 +196,14 @@ def render_results_section(report: Dict[str, Any]) -> None:
     st.markdown("---")
     st.markdown("## 📊 Informe de Evaluación de Seguridad")
 
+    # Identificación del origen del análisis
+    input_mode = report.get("input_mode", "text")
+    if input_mode == "ocr_screenshot":
+        mode_badge = "📷 **Modalidad:** Captura de Pantalla (OCR confirmado por usuario)"
+    else:
+        mode_badge = "📝 **Modalidad:** Texto Pegado Directamente"
+    st.caption(f"{mode_badge} • Caracteres analizados: **{report.get('input_char_count', 0)}**")
+
     # 1. Tarjeta principal de riesgo
     risk_info = report.get("risk_assessment", {})
     render_risk_card(risk_info)
@@ -227,13 +238,26 @@ def render_results_section(report: Dict[str, Any]) -> None:
         else:
             st.markdown("*No se activó ninguna regla de severidad.*")
 
-    # 7. Limitaciones
+    # 7. Telemetría de Diagnóstico de Integridad (si está activa, sin PII)
+    if "diagnostic_telemetry" in report:
+        diag = report["diagnostic_telemetry"]
+        with st.expander("🔬 Telemetría de Diagnóstico e Integridad (Sin PII)"):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f"- **Flujo de entrada:** `{diag.get('flow_name')}`")
+                st.markdown(f"- **Longitud de caracteres:** `{diag.get('char_count')}`")
+                st.markdown(f"- **Puntaje heurístico:** `{diag.get('score')}` / 100 (`{diag.get('risk_level')}`)")
+            with c2:
+                st.markdown(f"- **Hash SHA-256 de entrada:** `{diag.get('sha256_hash', '')[:16]}...`")
+                st.markdown(f"- **Reglas activadas:** `{', '.join(diag.get('activated_rules', [])) or 'Ninguna'}`")
+
+    # 8. Limitaciones
     limitations = report.get("limitations", [])
     with st.expander("📌 Limitaciones Metodológicas del Análisis"):
         for lim in limitations:
             st.markdown(f"- {lim}")
 
-    # 8. Botón de descarga de informe PDF
+    # 9. Botón de descarga de informe PDF
     st.markdown("### 📥 Exportar Documento Oficial")
     try:
         pdf_bytes = generate_pdf_report(report)
@@ -312,6 +336,17 @@ def main() -> None:
             type=["png", "jpg", "jpeg", "webp"],
             help="Tamaño máximo permitido: 10 MB. El archivo se procesa en memoria y no se almacena en disco.",
         )
+
+        # Control del ciclo de vida del archivo: si cambia o se quita, invalidar estado previo de OCR
+        current_file_sig = (
+            f"{uploaded_file.name}_{uploaded_file.size}" if uploaded_file is not None else None
+        )
+        if st.session_state.get("last_uploaded_file_sig") != current_file_sig:
+            st.session_state["last_uploaded_file_sig"] = current_file_sig
+            st.session_state["ocr_text_area"] = ""
+            st.session_state["ocr_status"] = None
+            st.session_state["ocr_url_warnings"] = []
+            st.session_state["analysis_result"] = None
 
         if uploaded_file is not None:
             file_bytes = uploaded_file.getvalue()
