@@ -1,0 +1,19 @@
+# Dependencias para la aplicación web interactiva (Streamlit), OCR y exportación de informes
+# Nota de arquitectura: El motor determinístico base (scripts/) opera con CERO dependencias externas
+# (100% biblioteca estándar de Python). Este archivo contiene exclusivamente las utilidades
+# para la capa de presentación web, visión por computadora y generación de documentos.
+
+# Interfaz Web
+streamlit>=1.40.0
+
+# Procesamiento de imágenes y OCR local
+pillow>=10.0.0
+pytesseract>=0.3.10
+
+# Generación de informes PDF y documentos de defensa
+reportlab>=4.0.0
+python-docx>=1.1.0
+python-pptx>=1.0.0
+
+# Suite de pruebas automatizadas
+pytest>=8.0.0

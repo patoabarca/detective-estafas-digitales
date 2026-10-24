@@ -156,7 +156,7 @@ class TextAnalyzer:
 
     def _detect_blocking_threats(self, text: str) -> Tuple[bool, List[str]]:
         patterns = [
-            r"(?i)\b(?:cuenta|acceso|tarjeta|servicio)\s+(?:ser[aá]\s+)?(?:suspendid[oa]|bloquead[oa]|cancelad[oa]|inhabilitad[oa])\b",
+            r"(?i)\b(?:cuenta(?:\s+bancaria)?|acceso|tarjeta|servicio)\s+(?:ser[aá]\s+)?(?:suspendid[oa]|bloquead[oa]|cancelad[oa]|inhabilitad[oa])\b",
             r"(?i)\b(?:bloqueo|suspensi[oó]n|inhabilitaci[oó]n)\s+(?:inmediat[oa]|preventiv[oa]|definitiv[oa])\b",
             r"(?i)\b(?:actividad\s+sospechosa|actividad\s+inusual|acceso\s+no\s+autorizado|inicio\s+de\s+sesi[oó]n\s+sospechoso)\b",
             r"(?i)\b(?:evit(?:ar|e)|para\s+evitar)\s+(?:el\s+bloqueo|la\s+suspensi[oó]n|el\s+cierre)\b",
@@ -175,6 +175,7 @@ class TextAnalyzer:
             r"(?i)\b(?:antes\s+de\s+las\s+\d{1,2}(?::\d{2})?\s*(?:hs|horas)?)\b",
             r"(?i)\b(?:de\s+forma\s+urgente|urgente|inmediatamente|a\s+la\s+brevedad|plazo\s+l[ií]mite)\b",
             r"(?i)\b(?:quedan\s+\d{1,2}\s+minutos|tiempo\s+l[ií]mite)\b",
+            r"(?i)\b(?:(?:bloquead[oa]|suspendid[oa]|vence)\s+hoy|solo\s+por\s+hoy|hoy\s+mismo)\b",
         ]
         snippets: List[str] = []
         for pat in patterns:
@@ -186,7 +187,7 @@ class TextAnalyzer:
         patterns = [
             r"(?i)\b(?:token\s+de\s+seguridad|clave\s+digital|clave\s+de\s+home\s+banking)\b",
             r"(?i)\b(?:c[oó]digo\s+de\s+(?:seguridad|verificaci[oó]n|\d+\s+d[ií]gitos))\b",
-            r"(?i)\b(?:reingresar|ingresar|confirmar|validar|actualizar|solicitar|compartir|enviar|pedir)\s+(?:su\s+|tu\s+)?(?:usuario|clave|documento|contrase[ñn]a|token|pin|c[oó]digo)\b",
+            r"(?i)\b(?:reingresar|reingres[ae]|ingresar|ingres[ae]|confirmar|confirm[ae]|validar|valid[ae]|actualizar|actualic[ee]|solicitar|solicit[ae]|compartir|compart[ae]|enviar|env[ií][ae]|pedir|pid[ae])\s+(?:su\s+|tu\s+)?(?:usuario|clave|documento|contrase[ñn]a|token|pin|c[oó]digo)\b",
             r"(?i)\b(?:pin\s+de\s+cajero|tarjeta\s+de\s+coordenadas)\b",
             r"(?i)\b(?:enlace\s+para\s+verificar\s+(?:su\s+)?identidad)\b",
             r"(?i)\b(?:solicitud\s+de\s+(?:su\s+)?(?:clave|contrase[ñn]a|token))\b",
