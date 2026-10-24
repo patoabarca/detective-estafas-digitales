@@ -156,14 +156,15 @@ class TextAnalyzer:
 
     def _detect_blocking_threats(self, text: str) -> Tuple[bool, List[str]]:
         patterns = [
-            r"(?i)\b(?:cuenta(?:\s+bancaria)?|acceso|tarjeta|servicio)\s+(?:ser[aá]\s+)?(?:suspendid[oa]|bloquead[oa]|cancelad[oa]|inhabilitad[oa])\b",
-            r"(?i)\b(?:bloqueo|suspensi[oó]n|inhabilitaci[oó]n)\s+(?:inmediat[oa]|preventiv[oa]|definitiv[oa])\b",
-            r"(?i)\b(?:actividad\s+sospechosa|actividad\s+inusual|acceso\s+no\s+autorizado|inicio\s+de\s+sesi[oó]n\s+sospechoso)\b",
-            r"(?i)\b(?:evit(?:ar|e)|para\s+evitar)\s+(?:el\s+bloqueo|la\s+suspensi[oó]n|el\s+cierre)\b",
-            r"(?i)\b[uú]ltimo\s+aviso\s+antes\s+de\b",
-            r"(?i)\b(?:eliminaci[oó]n|cancelaci[oó]n|cierre)\s+(?:definitiv[oa]|inmediat[oa])?\s*(?:de\s+(?:su\s+|tu\s+)?(?:cuenta|correo|servicio))\b",
-            r"(?i)\b(?:dejaremos\s+de\s+procesar|suspenderemos\s+el\s+env[ií]o\s+de|interrupci[oó]n\s+del\s+servicio)\b",
-            r"(?i)\b(?:cuenta|correo|servicio)\s+(?:ser[aá]\s+)?(?:eliminad[oa]|borrad[oa]|dad[oa]\s+de\s+baja)\b",
+            r"(?i)\b(?:cuenta(?:\s+bancaria|\s+de\s+correo)?|acceso|tarjeta|servicio|l[ií]nea(?:\s+m[oó]vil)?|buz[oó]n|perfil)\s+(?:ser[aá]\s+)?(?:suspendid[oa]|bloquead[oa]|cancelad[oa]|inhabilitad[oa]|eliminad[oa]|dad[oa]\s+de\s+baja)\b",
+            r"(?i)\b(?:procederemos\s+a\s+|vamos\s+a\s+|se\s+proceder[aá]\s+a\s+)?(?:dar\s+de\s+baja|suspender|bloquear|inhabilitar|cancelar|eliminar)\s+(?:su\s+|tu\s+|la\s+|el\s+)?(?:cuenta(?:\s+de\s+correo)?|servicio|l[ií]nea(?:\s+m[oó]vil)?|buz[oó]n|correo|acceso|suscripci[oó]n)\b",
+            r"(?i)\b(?:bloqueo|suspensi[oó]n|inhabilitaci[oó]n|cancelaci[oó]n|baja|eliminaci[oó]n)\s+(?:inmediat[oa]|preventiv[oa]|definitiv[oa]|temporal)\b",
+            r"(?i)\b(?:actividad\s+sospechosa|actividad\s+inusual|acceso\s+no\s+autorizado|inicio\s+de\s+sesi[oó]n\s+sospechoso|transferencia\s+saliente\s+no\s+reconocida|denunciado\s+por\s+reiteradas\s+infracciones)\b",
+            r"(?i)\b(?:evit(?:ar|e)|para\s+evitar)\s+(?:el\s+bloqueo|la\s+suspensi[oó]n|el\s+cierre|la\s+baja|la\s+cancelaci[oó]n|la\s+eliminaci[oó]n)\b",
+            r"(?i)\b[uú]ltimo\s+aviso(?:\s+antes\s+de)?\b",
+            r"(?i)\b(?:eliminaci[oó]n|cancelaci[oó]n|cierre|desactivaci[oó]n)\s+(?:definitiv[oa]|inmediat[oa])?\s*(?:de\s+(?:su\s+|tu\s+)?(?:cuenta|correo|servicio|buz[oó]n))\b",
+            r"(?i)\b(?:dejaremos\s+de\s+(?:procesar|enviar|recibir)|suspenderemos\s+el\s+env[ií]o\s+de|interrupci[oó]n\s+del\s+servicio|superado\s+el\s+\d+%\s+del\s+l[ií]mite|l[ií]mite\s+de\s+almacenamiento)\b",
+            r"(?i)\b(?:orden\s+de\s+embargo|embargo\s+preventivo|intimaci[oó]n\s+de\s+pago|aviso\s+de\s+suspensi[oó]n)\b",
         ]
         snippets: List[str] = []
         for pat in patterns:
@@ -174,11 +175,13 @@ class TextAnalyzer:
     def _detect_urgency(self, text: str) -> Tuple[bool, List[str]]:
         patterns = [
             r"(?i)\b(?:en\s+las\s+pr[oó]ximas\s+(?:\d{1,2}\s+)?(?:horas|hs|minutos|min))\b",
-            r"(?i)\b(?:plazo\s+de\s+\d{1,2}\s+(?:horas|hs))\b",
+            r"(?i)\b(?:plazo\s+(?:perentorio|improrrogable|l[ií]mite(?:\s+de\s+\d{1,2}\s+(?:horas|hs|d[ií]as))?))\b",
+            r"(?i)\b(?:en\s+un\s+plazo\s+de\s+\d{1,2}\s+(?:horas|hs|d[ií]as))\b",
             r"(?i)\b(?:antes\s+de\s+las\s+\d{1,2}(?::\d{2})?\s*(?:hs|horas)?)\b",
-            r"(?i)\b(?:de\s+forma\s+urgente|urgente|inmediatamente|a\s+la\s+brevedad|plazo\s+l[ií]mite)\b",
+            r"(?i)\b(?:de\s+forma\s+urgente|urgente|inmediatamente|a\s+la\s+brevedad)\b",
             r"(?i)\b(?:quedan\s+\d{1,2}\s+minutos|tiempo\s+l[ií]mite)\b",
             r"(?i)\b(?:(?:bloquead[oa]|suspendid[oa]|vence)\s+hoy|solo\s+por\s+hoy|hoy\s+mismo)\b",
+            r"(?i)\b(?:al\s+finalizar\s+la\s+jornada|al\s+cierre\s+del\s+d[ií]a|en\s+el\s+d[ií]a\s+de\s+hoy|en\s+el\s+d[ií]a\s+de\s+la\s+fecha)\b",
             r"(?i)\b[uú]ltima\s+vez\s+que\s+(?:te|le|se)\s+informa\w*\b",
             r"(?i)\b[uú]ltimo\s+aviso\b",
         ]
@@ -190,19 +193,24 @@ class TextAnalyzer:
 
     def _detect_credential_harvesting(self, text: str) -> Tuple[bool, List[str]]:
         patterns = [
-            r"(?i)\b(?:token\s+de\s+seguridad|clave\s+digital|clave\s+de\s+home\s+banking)\b",
+            r"(?i)\b(?:token(?:\s+de\s+seguridad)?|clave\s+digital|clave\s+de\s+home\s+banking|clave\s+de\s+cajero|tarjeta\s+de\s+coordenadas|pin(?:\s+de\s+(?:cajero|autogesti[oó]n|seguridad))?)\b",
             r"(?i)\b(?:c[oó]digo\s+de\s+(?:seguridad|verificaci[oó]n|\d+\s+d[ií]gitos))\b",
-            r"(?i)\b(?:reingresar|reingres[ae]|ingresar|ingres[ae]|confirmar|confirm[ae]|validar|valid[ae]|actualizar|actualic[ee]|solicitar|solicit[ae]|compartir|compart[ae]|enviar|env[ií][ae]|pedir|pid[ae])\s+(?:su\s+|tu\s+)?(?:usuario|clave|documento|contrase[ñn]a|token|pin|c[oó]digo)\b",
-            r"(?i)\b(?:pin\s+de\s+cajero|tarjeta\s+de\s+coordenadas)\b",
-            r"(?i)\b(?:enlace\s+para\s+verificar\s+(?:su\s+)?identidad)\b",
-            r"(?i)\b(?:solicitud\s+de\s+(?:su\s+)?(?:clave|contrase[ñn]a|token))\b",
-            r"(?i)\b(?:complet[aáeé]|realiz[aáeé]|hac[eé]|haga)\s+(?:su\s+|tu\s+|nuestra\s+)?verificaci[oó]n(?:\s+de\s+seguridad)?\b",
-            r"(?i)\b(?:verificar|actualizar)\s+(?:la\s+actualizaci[oó]n|su\s+cuenta|tu\s+cuenta|sus\s+datos|tus\s+datos)\b",
-            r"(?i)\b(?:verificaci[oó]n\s+de\s+seguridad\s+obligatoria)\b",
+            r"(?i)\b(?:reingresar|reingres[ae]|reingresando|ingresar|ingres[ae]|ingresando|confirmar|confirm[ae]|confirmando|validar|valid[ae]|validando|actualizar|actualic[ee]|actualizando|solicitar|solicit[ae]|solicitando|compartir|compart[ae]|compartiendo|enviar|env[ií][ae]|enviando|pedir|pid[ae])\s+(?:su\s+|tu\s+)?(?:usuario|clave|documento|contrase[ñn]a|token|pin|c[oó]digo|dni|cbu|cvu)\b",
+            r"(?i)\b(?:enlace\s+para\s+verificar\s+(?:su\s+)?identidad|formulario\s+oficial\s+para\s+(?:verificar|apelar)|cancelar\s+(?:la\s+operaci[oó]n|la\s+transacci[oó]n|el\s+retiro))\b",
+            r"(?i)\b(?:complet[aáeé]|completando|realiz[aáeé]|realizando|hac[eé]|haga|inici[aáeé])\s+(?:la\s+|el\s+|una\s+|su\s+|tu\s+|nuestra\s+)?verificaci[oó]n(?:\s+de\s+(?:seguridad|identidad|datos|cuenta|titularidad))?\b",
+            r"(?i)\b(?:verificar|validar|actualizar)\s+(?:la\s+actualizaci[oó]n|su\s+cuenta|tu\s+cuenta|sus\s+datos|tus\s+datos|sus?\s+credenciales|m[eé]todo\s+de\s+pago|tarjeta\s+de\s+cr[eé]dito|buz[oó]n)\b",
+            r"(?i)\b(?:verificaci[oó]n\s+de\s+seguridad\s+obligatoria|portal\s+de\s+seguridad)\b",
         ]
         snippets: List[str] = []
         for pat in patterns:
             for match in re.finditer(pat, text):
+                # Salvaguarda de contexto educativo o preventivo legítimo (evita falsos positivos)
+                window_start = max(0, match.start() - 120)
+                window = text[window_start:match.end()]
+                if re.search(r"(?i)\b(?:nunca|jam[aá]s|en\s+ning[uú]n\s+caso)\s+(?:te\s+|le\s+|se\s+)?(?:pedir\w*|solicitar\w*|llamar\w*|enviar\w*|compartas|entregues|brindes)", window):
+                    continue
+                if re.search(r"(?i)\b(?:no\s+(?:compartas|reveles|entregues|env[ií]es|des|brindes))\b", window):
+                    continue
                 snippets.append(match.group(0).strip())
         return len(snippets) > 0, snippets
 

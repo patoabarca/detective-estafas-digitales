@@ -19,7 +19,6 @@ URL_REGEX = re.compile(
     re.VERBOSE,
 )
 
-# Marcas populares frecuentemente suplantadas en subdominios
 COMMON_TARGET_BRANDS = [
     "mercadopago",
     "mercadolibre",
@@ -41,6 +40,26 @@ COMMON_TARGET_BRANDS = [
     "google",
     "apple",
     "microsoft",
+    "netflix",
+    "instagram",
+    "binance",
+    "personal",
+    "flow",
+]
+
+# Términos típicamente usados en subdominios para simular portales oficiales de validación
+DECEPTIVE_SECURITY_KEYWORDS = [
+    "validacion",
+    "verificacion",
+    "seguridad",
+    "actualizacion",
+    "soporte",
+    "reclamos",
+    "atencion",
+    "pagos",
+    "tramites",
+    "facturacion",
+    "cobros",
 ]
 
 # TLDs comúnmente asociados a dominios desechables o de bajo costo para campañas de phishing
@@ -126,6 +145,14 @@ def check_misleading_subdomains(hostname: str) -> List[str]:
             findings.append(
                 f"Uso engañoso de la marca '{brand}' en el subdominio mientras el dominio real es '{base_domain}'."
             )
+
+    # Detección de términos engañosos de validación/seguridad en subdominios
+    for kw in DECEPTIVE_SECURITY_KEYWORDS:
+        if kw in subdomains and kw not in base_domain:
+            findings.append(
+                f"Uso de términos engañosos de seguridad/validación ('{kw}') en subdominio con dominio no verificado '{base_domain}'."
+            )
+            break
     return findings
 
 

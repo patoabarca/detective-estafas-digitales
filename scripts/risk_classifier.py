@@ -109,7 +109,7 @@ class RiskClassifier:
             has_userinfo = url_item.get("has_userinfo", False)
 
             # Subdominios engañosos o IP directa
-            has_misleading_subdomain = any("Uso engañoso de la marca" in f for f in findings)
+            has_misleading_subdomain = any("Uso engañoso" in f or "términos engañosos" in f for f in findings)
             has_suspicious_tld = any("extensión de dominio de bajo costo" in f for f in findings)
 
             if is_ip:
@@ -120,7 +120,7 @@ class RiskClassifier:
             if has_misleading_subdomain:
                 score += self.weight_suspicious_url
                 activated_rules.append(
-                    f"REGLA-URL-02 (+{self.weight_suspicious_url} pts): Enlace con subdominio engañoso imitando una marca reconocida."
+                    f"REGLA-URL-02 (+{self.weight_suspicious_url} pts): Enlace con subdominio engañoso imitando una marca o portal de validación."
                 )
             if has_puny:
                 score += 25
@@ -149,14 +149,22 @@ class RiskClassifier:
         has_injection = text_analysis.get("prompt_injection_detected", False)
         has_cred = any(ind.get("id") == "FRA-CAPTURA-CREDENCIALES" for ind in indicators)
         has_threat = any(ind.get("id") == "ING-AMENAZA-BLOQUEO" for ind in indicators)
+        has_urgency = any(ind.get("id") == "ING-URGENCIA-ARTIFICIAL" for ind in indicators)
         has_advance_fee = any(ind.get("id") == "FRA-PAGO-ANTICIPADO" for ind in indicators)
         has_debin = any(ind.get("id") == "FRA-DEBIN-ENGANOSO" for ind in indicators)
         has_bad_url = len(url_analyses) > 0 and any(
-            u.get("is_ip_address") or any("Uso engañoso" in f or "bajo costo" in f for f in u.get("findings", []))
+            u.get("is_ip_address")
+            or any("Uso engañoso" in f or "bajo costo" in f or "términos engañosos" in f for f in u.get("findings", []))
             for u in url_analyses
         )
 
-        critical_combo = (has_threat and (has_cred or has_bad_url)) or has_advance_fee or has_debin
+        critical_combo = (
+            (has_threat and (has_cred or has_bad_url))
+            or (has_cred and has_bad_url)
+            or ((has_threat or has_urgency) and has_cred)
+            or has_advance_fee
+            or has_debin
+        )
 
         if has_injection or score >= self.thresh_alto or critical_combo:
             level = "ALTO"
