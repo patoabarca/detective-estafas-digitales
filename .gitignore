@@ -27,3 +27,13 @@ id_ed25519
 *.log
 secrets/
 credentials.json
+
+# Presentation and defense documents & generators
+generate_presentation*.py
+generate_defense_guide*.py
+*.pptx
+*.docx
+*Guion_Defensa*
+*Presentacion*
+Detective_Estafas_Digitales_Guion_Defensa*
+Detective_Estafas_Digitales_Presentacion*

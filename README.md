@@ -58,7 +58,6 @@ El sistema implementa dos canales de interacción independientes con una estrict
 ```text
 detective-estafas-digitales/
 │
-├── SKILL.md                          # Definición y manual operativo de la Skill para Antigravity
 ├── README.md                         # Documentación integral, instalación y guía de defensa oral
 ├── Dockerfile                        # Contenedor seguro para ejecución aislada (Zero Network)
 ├── .dockerignore                     # Exclusiones de contexto para construcción limpia
