@@ -199,6 +199,72 @@ El agente descubrirá `SKILL.md`, canalizará el mensaje al motor y responderá 
 
 ---
 
+## 🐳 5.1. Ejecución en Docker (Motor CLI, App Web con OCR y Exportación PDF)
+
+El proyecto cuenta con un `Dockerfile` integral que empaqueta tanto el **motor determinístico CLI** (`scripts/worker.py`) como la **mini aplicación web en Streamlit** (`app.py`), incluyendo **Tesseract OCR** con idioma español (`spa` + `eng`) y el exportador de informes **PDF** (`ReportLab`), corriendo bajo un usuario sin privilegios (`auditor`, UID `10001`).
+
+### Qué se ejecuta dentro de Docker y qué queda afuera:
+- **Dentro del contenedor Docker:**
+  - El motor determinístico de análisis estático (`scripts/worker.py` y módulos en `scripts/`).
+  - La aplicación web interactiva en Streamlit (`app.py` y paquete `web/`).
+  - El reconocimiento óptico de caracteres local (**Tesseract OCR**) para capturas de pantalla.
+  - La generación de informes descargables en **PDF, JSON y Markdown**.
+  - La suite completa de **84 pruebas automatizadas** con `pytest`.
+- **Fuera del contenedor Docker (en el sistema anfitrión):**
+  - **Google Antigravity IDE / Agente LLM (Vía 1):** El agente de IA reside en el entorno anfitrión, descubre la Skill mediante `.agents/skills/detective-estafas-digitales/SKILL.md` y puede invocar el motor localmente o enviando el mensaje por `STDIN` al contenedor Docker (`docker run --rm --network none -i detective-estafas-digitales --stdin --json`).
+
+### 1. Construir la imagen Docker
+Desde la raíz del proyecto, ejecutar:
+```bash
+docker build -t detective-estafas-digitales .
+```
+
+### 2. Ejecutar la aplicación web interactiva (Streamlit + OCR + PDF)
+```bash
+docker run --rm -p 8501:8501 --entrypoint streamlit detective-estafas-digitales run app.py
+```
+- Abrir en el navegador de la computadora anfitriona: `http://localhost:8501`.
+- Desde allí se puede pegar texto, subir capturas de pantalla para análisis con OCR y **descargar directamente el informe PDF** al equipo anfitrión mediante el botón *"📄 Descargar Informe Completo en PDF"*.
+
+### 3. Probar un análisis desde la terminal (Motor CLI aislado con `--network none`)
+```bash
+# Analizar un mensaje ficticio pasando texto directo:
+docker run --rm --network none detective-estafas-digitales --text "Estimado cliente de Banco Galicia: Su cuenta sera bloqueada hoy. Ingrese su token en https://galicia-validacion.seguridad-bancaria.online/login"
+
+# Analizar un archivo de ejemplo incluido:
+docker run --rm --network none detective-estafas-digitales --file examples/phishing_bancario.txt
+
+# Analizar vía STDIN con salida en JSON:
+echo "Urgente: valide su clave en http://192.168.1.5/login" | docker run --rm --network none -i detective-estafas-digitales --stdin --json
+```
+
+### 4. Recuperar los informes generados (PDF, JSON y Markdown) en la computadora anfitriona
+Además de la descarga directa desde el navegador en la interfaz web, el motor CLI permite exportar los tres formatos de informe (`informe_detective.pdf`, `informe_detective.json` e `informe_detective.md`) montando una carpeta del equipo anfitrión en `/app/output`:
+
+- **En PowerShell (Windows):**
+  ```powershell
+  New-Item -ItemType Directory -Force -Path output | Out-Null
+  docker run --rm --network none -v "${PWD}/output:/app/output" detective-estafas-digitales --text "Estimado cliente: Su cuenta sera suspendida hoy. Confirme su token en https://galicia-validacion.seguridad-bancaria.online" --output-dir /app/output
+  ```
+- **En Bash (Linux / macOS):**
+  ```bash
+  mkdir -p output
+  docker run --rm --network none -v "$(pwd)/output:/app/output" detective-estafas-digitales --text "Estimado cliente: Su cuenta sera suspendida hoy. Confirme su token en https://galicia-validacion.seguridad-bancaria.online" --output-dir /app/output
+  ```
+Los archivos generados quedarán disponibles inmediatamente en la carpeta `./output/` de la computadora anfitriona. También se puede especificar una ruta puntual para el PDF con `--pdf-out /app/output/mi_informe.pdf`.
+
+### 5. Ejecutar la suite de pruebas automatizadas dentro del contenedor
+```bash
+docker run --rm --network none --entrypoint pytest detective-estafas-digitales -v
+```
+
+### 6. Variables de entorno (Opcionales)
+El proyecto **no requiere claves de API ni archivos `.env`** para funcionar (opera 100% local y sin llamadas a servicios externos). De forma opcional, se admiten las siguientes variables:
+- `DETECTIVE_DIAGNOSTICS=true`: Activa la telemetría de diagnóstico e integridad en los reportes (incluye hash SHA-256 sin exponer datos personales). Ejemplo: `docker run --rm -e DETECTIVE_DIAGNOSTICS=true ...`
+- `TESSERACT_CMD`: Ruta personalizada al binario de Tesseract (solo necesaria fuera de Docker si Tesseract no está en el `PATH` estándar).
+
+---
+
 ## 🔒 6. Matriz de Seguridad y Privacidad
 
 | Principio | Implementación en Código Python | Requiere Sandbox / Docker |

@@ -1,11 +1,42 @@
+# Entornos virtuales y caches de Python
 .venv/
 venv/
+ENV/
+env/
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .pytest_cache/
+
+# Control de versiones e IDEs
 .git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Archivos sensibles y secretos (nunca incluir en la imagen)
+*.env
+*.env.*
+*.pem
+*.key
+*.crt
+id_rsa
+id_ed25519
+*.log
+secrets/
+credentials.json
+
+# Documentos de presentacion, guiones, generadores e informes locales
 *.pptx
 *.pdf
 *.docx
-.vscode/
-.idea/
+generate_presentation*.py
+generate_defense_guide*.py
+*Guion_Defensa*
+*Presentacion*
+output/
+reports/
+iniciar_aplicacion.bat
+
