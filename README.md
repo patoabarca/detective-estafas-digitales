@@ -243,9 +243,11 @@ docker compose logs
 ```
 
 #### 4. Recuperar los informes desde la aplicación web
-Al finalizar cualquier análisis (ya sea pegando texto o subiendo una captura con OCR), en la sección **"📥 Exportar Documento Oficial"** tenés dos opciones:
+Al finalizar cualquier análisis (ya sea pegando texto o subiendo una captura con OCR), en la sección **"📥 Exportar Documento Oficial"** tenés dos opciones que funcionan tanto dentro de Docker como al ejecutar la aplicación localmente:
 1. **"📄 Descargar Informe Completo en PDF"**: descarga el PDF directamente a través del navegador.
-2. **"💾 Guardar Informe en Carpeta Local (output/)"**: escribe el archivo `.pdf` y `.json` dentro de `/app/output` en el contenedor, quedando disponible de forma persistente en la carpeta `./output/` de tu computadora anfitriona gracias al volumen montado en `compose.yaml`.
+2. **"💾 Guardar Informe en Carpeta Local (output/)"**: resuelve dinámicamente la carpeta de salida usando la raíz del proyecto (`(PROJECT_ROOT / "output").resolve()`), creándola si no existe:
+   - **Dentro de Docker:** guarda los archivos `.pdf` y `.json` en `/app/output`, quedando persistidos en la carpeta `./output/` de la computadora anfitriona gracias al volumen montado en `compose.yaml`.
+   - **Fuera de Docker (ejecución local en Windows/Linux):** guarda los archivos `.pdf` y `.json` directamente en la carpeta `<raíz-del-proyecto>\output`.
 
 #### 5. Detener la aplicación (conservando los informes en `./output`)
 ```bash
