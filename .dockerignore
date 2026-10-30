@@ -39,4 +39,6 @@ generate_defense_guide*.py
 output/
 reports/
 iniciar_aplicacion.bat
+compose.yaml
+docker-compose.yml
 

@@ -257,18 +257,38 @@ def render_results_section(report: Dict[str, Any]) -> None:
         for lim in limitations:
             st.markdown(f"- {lim}")
 
-    # 9. Botón de descarga de informe PDF
+    # 9. Botón de descarga y guardado de informe PDF
     st.markdown("### 📥 Exportar Documento Oficial")
     try:
         pdf_bytes = generate_pdf_report(report)
         timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        st.download_button(
-            label="📄 Descargar Informe Completo en PDF",
-            data=pdf_bytes,
-            file_name=f"informe_detective_estafas_{timestamp_str}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
+        pdf_filename = f"informe_detective_estafas_{timestamp_str}.pdf"
+
+        output_dir = PROJECT_ROOT / "output"
+        col_dl, col_save = st.columns([1, 1])
+        with col_dl:
+            st.download_button(
+                label="📄 Descargar Informe Completo en PDF",
+                data=pdf_bytes,
+                file_name=pdf_filename,
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        with col_save:
+            if st.button(
+                "💾 Guardar Informe en Carpeta Local (output/)",
+                use_container_width=True,
+                help="Guarda el informe PDF y JSON en la carpeta ./output (montada en /app/output en Docker).",
+            ):
+                output_dir.mkdir(parents=True, exist_ok=True)
+                saved_pdf = output_dir / pdf_filename
+                saved_json = output_dir / f"informe_detective_estafas_{timestamp_str}.json"
+                saved_pdf.write_bytes(pdf_bytes)
+                import json as _json
+                saved_json.write_text(
+                    _json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+                )
+                st.success(f"✅ Informe guardado en `output/{pdf_filename}` y `output/{saved_json.name}`.")
     except Exception as exc:
         st.error(f"No fue posible generar el archivo PDF: {str(exc)}")
 
