@@ -636,9 +636,24 @@ def test_real_gemini_api_orchestration_when_configured():
             ),
         )
     )
-    assert resp.status == "success"
+    assert resp.status == "success", f"Fallo en orquestación real: {resp.error_type}: {resp.error_message}"
     assert resp.preparation is not None
     assert resp.preparation.estado == "correcto"
+    assert resp.preparation.detalle_estado == "con_enlaces"
+    assert "https://banco-validacion.seguridad-online.top" in resp.preparation.enlaces_encontrados
     assert resp.report is not None
     assert resp.report["risk_assessment"]["level"] == "ALTO"
+
+    # Verificar en las trazas que el orquestador delegó al preparador, que este usó sus herramientas
+    # y que el resultado volvió al orquestador para ejecutar el motor determinístico.
+    agents_seen = [ev["agent"] for ev in resp.trace_events]
+    tool_calls = [(ev["agent"], ev["tool"], ev["status"]) for ev in resp.trace_events if ev["event_type"] == "tool_call"]
+    assert "orquestador" in agents_seen
+    assert "preparador" in agents_seen
+    assert ("orquestador", "delegar_preparacion", "ok") in tool_calls
+    assert ("preparador", "tool_validar_entrada", "ok") in tool_calls
+    assert ("preparador", "tool_extraer_enlaces", "ok") in tool_calls
+    assert ("orquestador", "ejecutar_motor_deterministico", "ok") in tool_calls
+    for ev in resp.trace_events:
+        print(f"TRACE: agent={ev['agent']} | event={ev['event_type']} | tool={ev['tool']} | status={ev['status']} | ms={ev['duration_ms']} | detail={ev['detail']}")
 

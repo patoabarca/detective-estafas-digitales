@@ -25,7 +25,7 @@ class TraceEvent:
     """Evento individual de trazabilidad de la orquesta de agentes."""
     timestamp: str
     agent: str
-    event_type: Literal["agent_start", "skill_loaded", "tool_call", "agent_finish", "agent_error"]
+    event_type: Literal["agent_start", "skill_loaded", "llm_call", "tool_call", "agent_finish", "agent_error"]
     tool: str
     status: Literal["ok", "incomplete", "error", "rejected"]
     detail: str
@@ -44,7 +44,7 @@ class AgentTracer:
     def record(
         self,
         agent: str,
-        event_type: Literal["agent_start", "skill_loaded", "tool_call", "agent_finish", "agent_error"],
+        event_type: Literal["agent_start", "skill_loaded", "llm_call", "tool_call", "agent_finish", "agent_error"],
         tool: str,
         status: Literal["ok", "incomplete", "error", "rejected"],
         detail: str,

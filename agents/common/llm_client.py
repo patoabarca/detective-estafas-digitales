@@ -33,7 +33,7 @@ except ImportError:
     GOOGLE_GENAI_AVAILABLE = False
 
 
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
 MAX_TOOL_CALLS_DEFAULT = 5
 MAX_ELAPSED_SECONDS_DEFAULT = 25.0
 MAX_OUTPUT_TOKENS_DEFAULT = 1024
@@ -196,6 +196,10 @@ def run_agent_tool_loop(
         contents = [{"role": "user", "parts": [{"text": user_prompt}]}]
 
     final_text = ""
+    llm_calls_count = 0
+    prompt_tokens_total = 0
+    candidates_tokens_total = 0
+    total_tokens_accumulated = 0
 
     while True:
         elapsed = time.monotonic() - start_wall
@@ -212,11 +216,34 @@ def run_agent_tool_loop(
                 f"El agente '{agent_name}' superó el tiempo máximo permitido de {max_elapsed_seconds}s."
             )
 
+        llm_t0 = time.monotonic()
         try:
             response = client.models.generate_content(
                 model=resolved_model,
                 contents=contents,
                 config=config,
+            )
+            llm_ms = (time.monotonic() - llm_t0) * 1000
+            llm_calls_count += 1
+
+            usage = getattr(response, "usage_metadata", None)
+            p_tok = int(getattr(usage, "prompt_token_count", 0) or 0) if usage is not None else 0
+            c_tok = int(getattr(usage, "candidates_token_count", 0) or 0) if usage is not None else 0
+            t_tok = int(getattr(usage, "total_token_count", 0) or (p_tok + c_tok)) if usage is not None else 0
+            prompt_tokens_total += p_tok
+            candidates_tokens_total += c_tok
+            total_tokens_accumulated += t_tok
+
+            tracer.record(
+                agent=agent_name,
+                event_type="llm_call",
+                tool=resolved_model,
+                status="ok",
+                detail=(
+                    f"Llamada #{llm_calls_count} a {resolved_model} "
+                    f"(prompt_tokens={p_tok}, output_tokens={c_tok}, total_tokens={t_tok})."
+                ),
+                duration_ms=llm_ms,
             )
         except (AgentConfigurationError, AgentExecutionError, ContractValidationError):
             raise
@@ -334,5 +361,9 @@ def run_agent_tool_loop(
     return {
         "final_text": final_text,
         "tool_calls_count": tool_calls_count,
+        "llm_calls_count": llm_calls_count,
+        "prompt_tokens": prompt_tokens_total,
+        "output_tokens": candidates_tokens_total,
+        "total_tokens": total_tokens_accumulated,
         "model_used": resolved_model,
     }
