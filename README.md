@@ -64,7 +64,7 @@ El sistema implementa tres recorridos complementarios que comparten las mismas h
 | Característica | Modo Local Determinístico | Modo Orquesta de Agentes IA (Etapa 1) |
 | :--- | :--- | :--- |
 | **Conexión de red** | **Cero (100% Offline / Zero Network)**. No realiza ninguna petición externa. | **Habilitada hacia el proveedor IA configurado** (`google-genai` / Gemini API). **Nunca visita las URLs sospechosas del mensaje.** |
-| **Requisitos de credenciales** | Ninguno. Funciona sin `.env` ni claves. | Requiere `GEMINI_API_KEY` (y opcionalmente `GEMINI_MODEL`, por defecto `gemini-2.5-flash`). |
+| **Requisitos de credenciales** | Ninguno. Funciona sin `.env` ni claves. | Requiere `GEMINI_API_KEY` (y opcionalmente `GEMINI_MODEL`, por defecto `gemini-3.5-flash-lite`). |
 | **Ejecución de OCR y URLs** | Local en memoria RAM (Pillow + Tesseract + `scripts/url_analyzer.py`). | Local en memoria RAM invocada mediante herramientas autorizadas por el **Agente Preparador**. |
 | **Privacidad de datos** | El texto jamás sale de la máquina local o contenedor. | Se aplica **enmascaramiento preventivo de PII** (`agents/common/privacy.py`) antes de enviar texto al LLM externo, mostrando un aviso transparente en la UI. |
 | **Fallo de API o falta de clave** | No aplica. | Informa el error de forma explícita (`estado="error"`), **sin simular** que los agentes se ejecutaron y permitiendo usar el Modo Local. |
@@ -108,7 +108,7 @@ detective-estafas-digitales/
 │
 ├── README.md                         # Documentación integral, instalación y arquitectura de agentes
 ├── Dockerfile                        # Contenedor seguro (Motor CLI, App Web, Agentes, OCR y PDF)
-├── compose.yaml                      # Orquestación con Docker Compose (puerto 8501 y volumen ./output)
+├── compose.yaml                      # Orquestación con Docker Compose (puerto 8502->8501 y volumen ./output)
 ├── .env.example                      # Plantilla de variables de entorno (sin secretos reales)
 ├── requirements.txt                  # Dependencias del motor base (pytest - motor en stdlib pura)
 ├── requirements-web.txt              # Dependencias web y agentes (Streamlit, Pillow, Pytesseract, ReportLab, google-genai)
@@ -188,20 +188,20 @@ Podés copiar la plantilla `.env.example` o definir las variables en tu terminal
 - **En PowerShell (Windows):**
   ```powershell
   $env:GEMINI_API_KEY="tu_clave_de_gemini_aqui"
-  $env:GEMINI_MODEL="gemini-2.5-flash"
+  $env:GEMINI_MODEL="gemini-3.5-flash-lite"
   ```
 - **En Bash (Linux / macOS):**
   ```bash
   export GEMINI_API_KEY="tu_clave_de_gemini_aqui"
-  export GEMINI_MODEL="gemini-2.5-flash"
+  export GEMINI_MODEL="gemini-3.5-flash-lite"
   ```
-*(Si no configurás `GEMINI_API_KEY`, el **Modo Local Determinístico** funciona al 100% y el **Modo Orquesta de Agentes IA** te informará claramente en pantalla que falta la credencial).*
+*(La aplicación también carga automáticamente el archivo `.env` local de la raíz si existe. Si no configurás `GEMINI_API_KEY`, el **Modo Local Determinístico** funciona al 100% y el **Modo Orquesta de Agentes IA** te informará claramente en pantalla que falta la credencial).*
 
-### Paso 3: Iniciar la Aplicación Web en Streamlit
+### Paso 3: Iniciar la Aplicación Web en Streamlit (Ejecución Local)
 ```bash
-streamlit run app.py
+streamlit run app.py --server.port 8502
 ```
-Abrirá la interfaz en `http://localhost:8501`.
+Abrirá la interfaz en `http://localhost:8502` (o en el puerto por defecto de Streamlit si se omite `--server.port`).
 
 ---
 
@@ -215,7 +215,7 @@ Abrirá la interfaz en `http://localhost:8501`.
    - En el **Modo Orquesta de Agentes IA**, además del dictamen de riesgo, verás tres paneles desplegables adicionales:
      - **🧩 Resultado del Agente Preparador (Etapa 1):** Muestra `estado`, `detalle_estado`, cantidad de enlaces extraídos y advertencias.
      - **🛡️ Aviso de Privacidad (Datos enviados al proveedor IA):** Informa qué datos personales fueron enmascarados preventivamente antes de invocar la API.
-     - **🕵️ Trazabilidad de la Orquesta (Agentes y Herramientas):** Tabla auditable con cada paso ejecutado (`agent_start`, `skill_load`, `tool_call`, `agent_end`), estado y duración en milisegundos.
+     - **🕵️ Trazabilidad de la Orquesta (Agentes y Herramientas):** Tabla auditable con cada paso ejecutado (`agent_start`, `skill_loaded`, `llm_call`, `tool_call`, `agent_finish`), estado y duración en milisegundos.
 3. **Probar en la pestaña "📷 Subir Captura (OCR)":**
    - Subí una imagen PNG/JPG/WebP (por ejemplo, `examples/captura_phishing_bancario.png`).
    - En el **Modo Orquesta de Agentes IA**, podés elegir:
@@ -228,7 +228,7 @@ Abrirá la interfaz en `http://localhost:8501`.
 
 ## 🐳 5.1. Ejecución con Docker y Docker Compose
 
-El archivo `compose.yaml` levanta el servicio `detective-web` en `http://localhost:8501`, corriendo con el usuario sin privilegios `10001:10001`, montando `./output` en `/app/output` y pasando de forma opcional las variables `GEMINI_API_KEY`, `GEMINI_MODEL` y `DETECTIVE_DIAGNOSTICS` si están definidas en el anfitrión o en un archivo `.env` local (excluido por `.gitignore` y `.dockerignore`).
+El archivo `compose.yaml` levanta el servicio `detective-web` publicando el puerto `127.0.0.1:8502:8501` (`http://localhost:8502` en el anfitrión hacia el puerto `8501` en el que escucha Streamlit dentro del contenedor), corriendo con el usuario sin privilegios `10001:10001`, montando `./output` en `/app/output` y pasando de forma opcional las variables `GEMINI_API_KEY`, `GEMINI_MODEL` y `DETECTIVE_DIAGNOSTICS` si están definidas en el anfitrión o en un archivo `.env` local (excluido por `.gitignore` y `.dockerignore`).
 
 ### 1. Iniciar la aplicación con Docker Compose
 ```bash
@@ -239,7 +239,7 @@ docker compose up --build -d
 docker compose ps
 docker compose logs
 ```
-Luego abrí `http://localhost:8501` en tu navegador. Para usar el **Modo Orquesta de Agentes IA** dentro del contenedor, asegurate de tener `GEMINI_API_KEY` exportada en tu terminal o en un archivo `.env` antes de ejecutar `docker compose up`.
+Luego abrí **`http://localhost:8502`** en tu navegador. Para usar el **Modo Orquesta de Agentes IA** dentro del contenedor, asegurate de tener `GEMINI_API_KEY` configurada en tu archivo `.env` local (o exportada en tu terminal) antes de ejecutar `docker compose up`.
 
 ### 2. Detener el servicio (conservando los informes en `./output`)
 ```bash

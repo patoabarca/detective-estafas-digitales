@@ -15,7 +15,7 @@ services:
       - "--server.headless=true"
       - "--browser.gatherUsageStats=false"
     ports:
-      - "127.0.0.1:8501:8501"
+      - "127.0.0.1:8502:8501"
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
