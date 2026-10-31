@@ -1,0 +1,21 @@
+services:
+  detective-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: detective-estafas-digitales:latest
+    container_name: detective-estafas-web
+    user: "10001:10001"
+    entrypoint: ["streamlit"]
+    command:
+      - "run"
+      - "app.py"
+      - "--server.address=0.0.0.0"
+      - "--server.port=8501"
+      - "--server.headless=true"
+      - "--browser.gatherUsageStats=false"
+    ports:
+      - "127.0.0.1:8501:8501"
+    volumes:
+      - ./output:/app/output
+    restart: unless-stopped

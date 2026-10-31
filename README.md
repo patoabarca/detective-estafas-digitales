@@ -199,6 +199,109 @@ El agente descubrirá `SKILL.md`, canalizará el mensaje al motor y responderá 
 
 ---
 
+## 🐳 5.1. Ejecución en Docker y Docker Compose (Motor CLI, App Web con OCR y Exportación PDF)
+
+El proyecto cuenta con un `Dockerfile` y un archivo `compose.yaml` que empaquetan tanto el **motor determinístico CLI** (`scripts/worker.py`) como la **mini aplicación web en Streamlit** (`app.py`), incluyendo **Tesseract OCR** con idioma español (`spa` + `eng`) y el exportador de informes **PDF** (`ReportLab`), corriendo bajo un usuario sin privilegios (`auditor`, UID `10001`).
+
+### Qué se ejecuta dentro de Docker y qué queda afuera:
+- **Dentro del contenedor Docker:**
+  - El motor determinístico de análisis estático (`scripts/worker.py` y módulos en `scripts/`).
+  - La aplicación web interactiva en Streamlit (`app.py` y paquete `web/`).
+  - El reconocimiento óptico de caracteres local (**Tesseract OCR**) para capturas de pantalla.
+  - La generación de informes en **PDF, JSON y Markdown**.
+  - La suite completa de **84 pruebas automatizadas** con `pytest`.
+- **Fuera del contenedor Docker (en el sistema anfitrión):**
+  - **Google Antigravity IDE / Agente LLM (Vía 1):** El agente de IA reside en el entorno anfitrión, descubre la Skill mediante `.agents/skills/detective-estafas-digitales/SKILL.md` y puede invocar el motor localmente o enviando el mensaje por `STDIN` al contenedor Docker (`docker run --rm --network none -i detective-estafas-digitales --stdin --json`).
+
+---
+
+### A. Uso con Docker Compose (Recomendado para la Aplicación Web)
+
+El archivo `compose.yaml` configura el servicio `detective-web` sobreescribiendo el `ENTRYPOINT` para lanzar Streamlit en `0.0.0.0:8501`, publicando el puerto en `127.0.0.1:8501` (`http://localhost:8501`), ejecutándose con el usuario no-root `10001:10001` y montando `./output` en `/app/output`.
+
+#### 1. Iniciar la aplicación con Docker Compose
+```bash
+# En primer plano (muestra los logs en vivo):
+docker compose up --build
+
+# O en segundo plano (modo detached):
+docker compose up --build -d
+```
+
+#### 2. Abrir la aplicación web
+Abrir el navegador en la computadora anfitriona e ingresar a:
+- `http://localhost:8501`
+
+#### 3. Consultar el estado y los logs del servicio
+```bash
+# Ver estado del contenedor:
+docker compose ps
+
+# Consultar los logs del servicio:
+docker compose logs
+# (O seguir los logs en tiempo real con: docker compose logs -f)
+```
+
+#### 4. Recuperar los informes desde la aplicación web
+Al finalizar cualquier análisis (ya sea pegando texto o subiendo una captura con OCR), en la sección **"📥 Exportar Documento Oficial"** tenés dos opciones que funcionan tanto dentro de Docker como al ejecutar la aplicación localmente:
+1. **"📄 Descargar Informe Completo en PDF"**: descarga el PDF directamente a través del navegador.
+2. **"💾 Guardar Informe en Carpeta Local (output/)"**: resuelve dinámicamente la carpeta de salida usando la raíz del proyecto (`(PROJECT_ROOT / "output").resolve()`), creándola si no existe:
+   - **Dentro de Docker:** guarda los archivos `.pdf` y `.json` en `/app/output`, quedando persistidos en la carpeta `./output/` de la computadora anfitriona gracias al volumen montado en `compose.yaml`.
+   - **Fuera de Docker (ejecución local en Windows/Linux):** guarda los archivos `.pdf` y `.json` directamente en la carpeta `<raíz-del-proyecto>\output`.
+
+#### 5. Detener la aplicación (conservando los informes en `./output`)
+```bash
+docker compose down
+```
+Esto detiene y elimina el contenedor y la red de Docker Compose sin borrar ninguno de los informes guardados en `./output/`.
+
+---
+
+### B. Uso directo con Docker CLI (Motor por Consola y Pruebas)
+
+#### 1. Construir la imagen manualmente
+```bash
+docker build -t detective-estafas-digitales .
+```
+
+#### 2. Probar un análisis desde la terminal (Motor CLI aislado con `--network none`)
+```bash
+# Analizar un mensaje ficticio pasando texto directo:
+docker run --rm --network none detective-estafas-digitales --text "Estimado cliente de Banco Galicia: Su cuenta sera bloqueada hoy. Ingrese su token en https://galicia-validacion.seguridad-bancaria.online/login"
+
+# Analizar un archivo de ejemplo incluido:
+docker run --rm --network none detective-estafas-digitales --file examples/phishing_bancario.txt
+
+# Analizar vía STDIN con salida en JSON:
+echo "Urgente: valide su clave en http://192.168.1.5/login" | docker run --rm --network none -i detective-estafas-digitales --stdin --json
+```
+
+#### 3. Recuperar los informes generados por CLI en `./output`
+El motor CLI permite exportar los tres formatos de informe (`informe_detective.pdf`, `informe_detective.json` e `informe_detective.md`) montando la carpeta `./output` en `/app/output`:
+
+- **En PowerShell (Windows):**
+  ```powershell
+  New-Item -ItemType Directory -Force -Path output | Out-Null
+  docker run --rm --network none -v "${PWD}/output:/app/output" detective-estafas-digitales --text "Estimado cliente: Su cuenta sera suspendida hoy. Confirme su token en https://galicia-validacion.seguridad-bancaria.online" --output-dir /app/output
+  ```
+- **En Bash (Linux / macOS):**
+  ```bash
+  mkdir -p output
+  docker run --rm --network none -v "$(pwd)/output:/app/output" detective-estafas-digitales --text "Estimado cliente: Su cuenta sera suspendida hoy. Confirme su token en https://galicia-validacion.seguridad-bancaria.online" --output-dir /app/output
+  ```
+
+#### 4. Ejecutar la suite de pruebas automatizadas dentro del contenedor
+```bash
+docker run --rm --network none --entrypoint pytest detective-estafas-digitales -v
+```
+
+#### 5. Variables de entorno (Opcionales)
+El proyecto **no requiere claves de API ni archivos `.env`** para funcionar (opera 100% local y sin llamadas a servicios externos). De forma opcional, se admiten las siguientes variables:
+- `DETECTIVE_DIAGNOSTICS=true`: Activa la telemetría de diagnóstico e integridad en los reportes (incluye hash SHA-256 sin exponer datos personales).
+- `TESSERACT_CMD`: Ruta personalizada al binario de Tesseract (solo necesaria fuera de Docker si Tesseract no está en el `PATH` estándar).
+
+---
+
 ## 🔒 6. Matriz de Seguridad y Privacidad
 
 | Principio | Implementación en Código Python | Requiere Sandbox / Docker |

@@ -75,3 +75,31 @@ class TestPDFExport:
         pdf_bytes = generate_pdf_report(special_report)
         assert isinstance(pdf_bytes, bytes)
         assert pdf_bytes.startswith(b"%PDF-")
+
+    def test_save_report_to_output_creates_dir_and_files(self, tmp_path):
+        """Verifica que save_report_to_output cree la carpeta de salida y guarde PDF y JSON."""
+        from app import get_output_directory, save_report_to_output, PROJECT_ROOT
+
+        # 1. Verificar que get_output_directory resuelve siempre a <PROJECT_ROOT>/output
+        expected_dir = (PROJECT_ROOT / "output").resolve()
+        assert get_output_directory() == expected_dir
+
+        # 2. Verificar creación automática de carpeta y escritura de PDF + JSON
+        custom_out = tmp_path / "subdir_no_existente" / "output"
+        assert not custom_out.exists()
+
+        report = analyze_text(
+            "Urgente: su cuenta bancaria sera suspendida. Confirme su token en https://galicia-validacion.seguridad-bancaria.online",
+            input_mode="text",
+        )
+        pdf_bytes = generate_pdf_report(report)
+        saved_pdf, saved_json = save_report_to_output(
+            report, pdf_bytes, "20261030_test", target_dir=custom_out
+        )
+
+        assert custom_out.is_dir()
+        assert saved_pdf.is_file()
+        assert saved_pdf.read_bytes().startswith(b"%PDF-")
+        assert saved_json.is_file()
+        assert '"level": "ALTO"' in saved_json.read_text(encoding="utf-8")
+

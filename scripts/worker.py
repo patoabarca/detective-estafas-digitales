@@ -216,6 +216,23 @@ def main() -> int:
     group.add_argument("--stdin", action="store_true", help="Leer mensaje desde la entrada estándar (STDIN)")
 
     parser.add_argument("--json", action="store_true", help="Emitir resultado exclusivamente en formato JSON estructurado")
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Directorio opcional donde exportar los informes generados (reporte.json, reporte.md y reporte.pdf)",
+    )
+    parser.add_argument(
+        "--pdf",
+        action="store_true",
+        help="Generar también el informe en formato PDF cuando se especifica --output-dir (o ruta de archivo con --pdf-out)",
+    )
+    parser.add_argument(
+        "--pdf-out",
+        type=str,
+        default=None,
+        help="Ruta opcional para guardar directamente el informe PDF generado",
+    )
 
     args = parser.parse_args()
     policy = load_policy()
@@ -224,12 +241,39 @@ def main() -> int:
         content = read_input(args, policy)
         report = run_pipeline(content, policy)
 
+        report_gen = ReportGenerator()
+        human_report = report_gen.generate_human_readable_report(report)
+
         if args.json:
             print(json.dumps(report, indent=2, ensure_ascii=False))
         else:
-            report_gen = ReportGenerator()
-            human_report = report_gen.generate_human_readable_report(report)
             print(human_report)
+
+        # Exportación opcional de informes al sistema de archivos (ej. volumen montado en Docker)
+        if args.output_dir:
+            out_dir = Path(args.output_dir).resolve()
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "informe_detective.json").write_text(
+                json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            (out_dir / "informe_detective.md").write_text(human_report, encoding="utf-8")
+            if args.pdf or True:
+                if str(BASE_DIR) not in sys.path:
+                    sys.path.insert(0, str(BASE_DIR))
+                from web.pdf_exporter import generate_pdf_report
+
+                pdf_bytes = generate_pdf_report(report)
+                (out_dir / "informe_detective.pdf").write_bytes(pdf_bytes)
+
+        if args.pdf_out:
+            pdf_path = Path(args.pdf_out).resolve()
+            pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            if str(BASE_DIR) not in sys.path:
+                sys.path.insert(0, str(BASE_DIR))
+            from web.pdf_exporter import generate_pdf_report
+
+            pdf_bytes = generate_pdf_report(report)
+            pdf_path.write_bytes(pdf_bytes)
 
         return 0
 

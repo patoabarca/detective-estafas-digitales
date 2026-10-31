@@ -18,9 +18,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import io
+import json
 from pathlib import Path
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import streamlit as st
 
@@ -191,6 +192,40 @@ def render_sidebar(ocr_service) -> None:
 # Renderizado de Resultados del Análisis
 # =============================================================================
 
+def get_output_directory() -> Path:
+    """
+    Resuelve la ruta de la carpeta de salida `output` de forma compatible
+    tanto dentro de Docker (/app/output) como localmente en Windows/Linux (<proyecto>/output).
+    """
+    return (PROJECT_ROOT / "output").resolve()
+
+
+def save_report_to_output(
+    report: Dict[str, Any],
+    pdf_bytes: bytes,
+    timestamp_str: str,
+    target_dir: Optional[Path] = None,
+) -> Tuple[Path, Path]:
+    """
+    Guarda el informe en formatos PDF y JSON dentro del directorio de salida indicado
+    (por defecto `PROJECT_ROOT / "output"`), creando la carpeta si no existe.
+    """
+    output_dir = (target_dir or get_output_directory()).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    pdf_filename = f"informe_detective_estafas_{timestamp_str}.pdf"
+    json_filename = f"informe_detective_estafas_{timestamp_str}.json"
+
+    saved_pdf = output_dir / pdf_filename
+    saved_json = output_dir / json_filename
+
+    saved_pdf.write_bytes(pdf_bytes)
+    saved_json.write_text(
+        json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    return saved_pdf, saved_json
+
+
 def render_results_section(report: Dict[str, Any]) -> None:
     """Muestra el informe visual completo derivado del motor."""
     st.markdown("---")
@@ -257,18 +292,47 @@ def render_results_section(report: Dict[str, Any]) -> None:
         for lim in limitations:
             st.markdown(f"- {lim}")
 
-    # 9. Botón de descarga de informe PDF
+    # 9. Botón de descarga y guardado de informe PDF
     st.markdown("### 📥 Exportar Documento Oficial")
     try:
         pdf_bytes = generate_pdf_report(report)
         timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        st.download_button(
-            label="📄 Descargar Informe Completo en PDF",
-            data=pdf_bytes,
-            file_name=f"informe_detective_estafas_{timestamp_str}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
+        pdf_filename = f"informe_detective_estafas_{timestamp_str}.pdf"
+
+        output_dir = get_output_directory()
+        col_dl, col_save = st.columns([1, 1])
+        with col_dl:
+            st.download_button(
+                label="📄 Descargar Informe Completo en PDF",
+                data=pdf_bytes,
+                file_name=pdf_filename,
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        with col_save:
+            if st.button(
+                "💾 Guardar Informe en Carpeta Local (output/)",
+                use_container_width=True,
+                help="Guarda el informe PDF y JSON en la carpeta ./output del proyecto (montada en /app/output en Docker).",
+            ):
+                try:
+                    saved_pdf, saved_json = save_report_to_output(
+                        report, pdf_bytes, timestamp_str, output_dir
+                    )
+                    st.success(
+                        f"✅ Informe guardado correctamente en `{output_dir}`:  \n"
+                        f"- `{saved_pdf.name}`  \n"
+                        f"- `{saved_json.name}`"
+                    )
+                except PermissionError:
+                    st.error(
+                        f"❌ Permiso denegado: no se pudo escribir en la carpeta `{output_dir}`. "
+                        "Verificá los permisos de escritura del directorio o del volumen montado."
+                    )
+                except OSError as os_err:
+                    st.error(
+                        f"❌ Error de lectura/escritura al intentar guardar el informe en `{output_dir}`: {os_err}"
+                    )
     except Exception as exc:
         st.error(f"No fue posible generar el archivo PDF: {str(exc)}")
 

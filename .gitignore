@@ -28,6 +28,10 @@ id_ed25519
 secrets/
 credentials.json
 
+# Generated reports / Docker output
+output/
+reports/
+
 # Presentation and defense documents & generators
 generate_presentation*.py
 generate_defense_guide*.py
