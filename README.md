@@ -157,8 +157,8 @@ detective-estafas-digitales/
 │   ├── policy.json                   # Políticas de ejecución, límites de tamaño y ponderaciones
 │   └── result_schema.json            # Esquema JSON Schema del reporte final
 │
-└── tests/                            # Batería de 101 pruebas automatizadas con pytest
-    ├── test_agents_orchestration.py  # 17 pruebas de Orquestador, Preparador, Skills, seguridad y límites
+└── tests/                            # Batería de 102 pruebas automatizadas con pytest
+    ├── test_agents_orchestration.py  # 18 pruebas de Orquestador, Preparador, Skills, seguridad y límites
     └── ...                           # 84 pruebas existentes del motor, OCR, PDF, CLI, Docker y seguridad web
 ```
 
@@ -269,16 +269,16 @@ La seguridad del sistema se aplica mediante validaciones determinísticas en Pyt
 
 ---
 
-## 🧪 7. Pruebas Automatizadas (101 Tests en Total)
+## 🧪 7. Pruebas Automatizadas (102 Tests en Total) y Validación Manual
 
-El proyecto cuenta con **101 pruebas automatizadas con `pytest`** distribuidas en 12 archivos de prueba, cubriendo tanto el motor determinístico, el OCR, el exportador PDF y Docker como la nueva **Orquesta de Agentes IA (Etapa 1)** (`tests/test_agents_orchestration.py`):
+El proyecto cuenta con **102 pruebas automatizadas con `pytest`** distribuidas en 12 archivos de prueba, cubriendo tanto el motor determinístico, el OCR, el exportador PDF y Docker como la nueva **Orquesta de Agentes IA (Etapa 1)** (`tests/test_agents_orchestration.py`):
 
 ```bash
 .venv\Scripts\python.exe -m pytest -v
 ```
 
-### Escenarios verificados en `tests/test_agents_orchestration.py`:
-1. Carga programática de `SKILL.md` (`validar-entrada`, `extraer-texto-captura`, `extraer-enlaces`) y bloqueo de agentes no autorizados o *path traversal*.
+### Escenarios verificados en `tests/test_agents_orchestration.py` (18 tests):
+1. Carga programática de `SKILL.md` (`validar-entrada`, `extraer-texto-captura`, `extraer-enlaces`) y bloqueo de agentes no autorizados o *path traversal* (3 tests).
 2. Flujo completo `Orquestador ➔ Preparador ➔ Motor` para **texto con enlaces** (`estado="correcto"`, `detalle_estado="con_enlaces"`).
 3. Flujo completo para **texto sin enlaces** (`estado="correcto"`, `detalle_estado="sin_enlaces"`, `enlaces=[]`).
 4. Flujo completo para **captura legible con enlaces** (`estado="correcto"`, `detalle_estado="con_enlaces"`).
@@ -289,10 +289,15 @@ El proyecto cuenta con **101 pruebas automatizadas con `pytest`** distribuidas e
 9. Rechazo de **argumentos inválidos o inesperados** en llamadas a herramientas (`tool_args_invalid`).
 10. Manejo explícito de **fallo técnico en la herramienta OCR** (`estado="error"`, `detalle_estado="fallo_herramienta"`).
 11. Manejo explícito de **falta de credenciales (`GEMINI_API_KEY`) o fallo de API** con redacción de secretos en los mensajes de error.
-12. Cumplimiento estricto del **límite máximo de llamadas a herramientas (`max_tool_calls`)** y del **presupuesto de tiempo (`max_elapsed_seconds`)**.
-13. **Enmascaramiento preventivo de PII** (CBU/CVU, DNI, tarjeta, email) preservando URLs intactas.
-14. Generación y validación del **informe PDF** a partir del resultado orquestado.
-15. Prueba opcional de integración en vivo contra la API real de Gemini (`test_real_gemini_api_orchestration_when_configured`), que se ejecuta automáticamente cuando `GEMINI_API_KEY` está definida en el entorno y se marca como `SKIPPED` en entornos sin clave configurada.
+12. Carga segura de `.env` local (`load_local_env_file`) sin sobrescribir variables ya definidas en el entorno.
+13. Cumplimiento estricto del **límite máximo de llamadas a herramientas (`max_tool_calls`)** y del **presupuesto de tiempo (`max_elapsed_seconds`)**.
+14. **Enmascaramiento preventivo de PII** (CBU/CVU, DNI, tarjeta, email) preservando URLs intactas y generación del **informe PDF** a partir del resultado orquestado.
+15. Prueba de integración real contra la API de Google Gemini (`test_real_gemini_api_orchestration_when_configured`) verificada con `gemini-3.5-flash-lite` y datos ficticios (`PASSED`: 6 llamadas totales al modelo — 3 del Orquestador y 3 del Preparador — y 4 herramientas invocadas en orden: `delegar_preparacion` ➔ `tool_validar_entrada` ➔ `tool_extraer_enlaces` ➔ `ejecutar_motor_deterministico`).
+
+### Resumen de Verificación Efectivamente Realizada (Etapa 1):
+- **Suite determinística y con cliente LLM simulado (`pytest`):** `101 passed, 1 skipped` ejecutada tanto en el entorno virtual local de Windows como dentro del contenedor Docker (`docker exec detective-estafas-web pytest -v`).
+- **Integración en vivo con Google Gemini API (`gemini-3.5-flash-lite`):** Verificada mediante `test_real_gemini_api_orchestration_when_configured` (`1 passed`) comprobando en las trazas la delegación real del Orquestador al Preparador, el uso de las herramientas autorizadas y el registro de tokens consumidos (`11.897` tokens de entrada + `438` tokens de salida = `12.335` tokens totales).
+- **Comprobación manual en navegador (`http://localhost:8502`):** Verificada interactivamente sobre el contenedor levantado con Docker Compose seleccionando el **Modo Orquesta de Agentes IA (Orquestador + Preparador)**.
 
 ---
 
