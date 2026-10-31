@@ -168,3 +168,4 @@ def format_skills_prompt_section(skills: Dict[str, SkillDefinition]) -> str:
             f"{s_def.instructions_markdown}\n"
         )
     return "\n".join(blocks)
+

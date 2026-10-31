@@ -493,6 +493,7 @@ class TestAgentSecurityControlsAndLimits:
 
     def test_missing_credentials_and_api_failure_handled_explicitly(self, monkeypatch):
         """Prueba 9: Falta de GEMINI_API_KEY o fallo de red de la API informa error claro sin simular éxito."""
+        monkeypatch.setenv("DETECTIVE_SKIP_DOTENV", "1")
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         status_info = get_agent_runtime_status()
         assert status_info["api_key_configured"] is False
@@ -519,6 +520,28 @@ class TestAgentSecurityControlsAndLimits:
         # Verificar que la clave secreta fue redactada y NUNCA aparece en el error ni en los eventos de traza
         assert fake_secret not in (resp_fail.error_message or "")
         assert fake_secret not in str(resp_fail.trace_events)
+
+    def test_local_env_file_loading_without_overwriting_existing_env(self, tmp_path, monkeypatch):
+        """Prueba 9b: Verifica que load_local_env_file cargue .env local sin sobrescribir variables existentes."""
+        from agents.common.llm_client import load_local_env_file
+
+        sample_env = tmp_path / ".env"
+        sample_env.write_text(
+            "# Archivo .env de prueba\n"
+            "GEMINI_API_KEY=AIzaSyTEST_LOCAL_ENV_KEY_123456\n"
+            "GEMINI_MODEL=gemini-2.5-flash\n"
+            "DETECTIVE_DIAGNOSTICS=true\n",
+            encoding="utf-8",
+        )
+        monkeypatch.delenv("DETECTIVE_SKIP_DOTENV", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.setenv("GEMINI_MODEL", "custom-model-preserve")
+
+        loaded = load_local_env_file(env_path=sample_env)
+        assert loaded is True
+        assert os.environ.get("GEMINI_API_KEY") == "AIzaSyTEST_LOCAL_ENV_KEY_123456"
+        # No debe sobrescribir una variable ya definida con valor en el entorno
+        assert os.environ.get("GEMINI_MODEL") == "custom-model-preserve"
 
     def test_max_tool_calls_and_timeout_limits_enforced(self):
         """Prueba 10: Límites de cantidad de llamadas a herramientas y tiempo máximo de ejecución."""
@@ -618,3 +641,4 @@ def test_real_gemini_api_orchestration_when_configured():
     assert resp.preparation.estado == "correcto"
     assert resp.report is not None
     assert resp.report["risk_assessment"]["level"] == "ALTO"
+

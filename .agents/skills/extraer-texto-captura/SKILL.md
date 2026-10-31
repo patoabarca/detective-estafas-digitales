@@ -37,3 +37,4 @@ Devuelve un diccionario estructurado (`OCRToolOutput`) con:
 - **Cero invención de texto:** si la captura es borrosa, ilegible o no tiene texto, devuelve `status: "empty_or_illegible"` y `extracted_text: ""`. El agente **jamás** debe inventar o suponer el texto de la captura.
 - **Procesamiento 100% local:** la imagen jamás se envía a la API del LLM; se procesa localmente con Tesseract en memoria RAM.
 - **Diferenciación de fallos:** distingue explícitamente entre captura sin texto legible (`"empty_or_illegible"` -> estado de preparación `"incompleto"`) y fallo técnico del binario OCR (`"tool_error"` -> estado de preparación `"error"`).
+

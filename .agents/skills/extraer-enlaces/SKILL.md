@@ -33,3 +33,4 @@ Devuelve un diccionario estructurado (`LinkExtractionToolOutput`) con:
 ## 5. Límites y Manejo de Errores
 - **Política estricta Zero Network:** la herramienta **nunca** abre, descarga, resuelve por DNS ni envía peticiones HTTP/HTTPS a las URLs encontradas.
 - **Diferenciación explícita:** cuando un mensaje no tiene enlaces, devuelve `status: "no_links"` y `urls: []`, lo cual es un resultado válido y normal (no un error de herramienta ni de entrada).
+

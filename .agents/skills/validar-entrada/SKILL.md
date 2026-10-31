@@ -39,3 +39,4 @@ Devuelve un diccionario estructurado (`ValidationToolOutput`) con:
 - **Prevención de Decompression Bombs:** rechaza imágenes mayores a 10 MB, 25 Megapíxeles o 5000x5000 px, e imágenes menores a 10x10 px.
 - **Límite de texto:** rechaza textos vacíos (solo espacios) o que superen los 15.000 caracteres.
 - **Reporte de errores:** nunca lanza excepciones no controladas al agente; devuelve `is_valid: false` con `status: "invalid"` y el `error_code` específico para que el Agente Preparador reporte el estado `"error"` (entrada no válida).
+

@@ -251,3 +251,4 @@ def validate_tool_arguments(
         validated[k] = v
 
     return validated
+

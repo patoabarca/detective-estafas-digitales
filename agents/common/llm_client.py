@@ -16,6 +16,7 @@ Implementa:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import time
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -36,6 +37,47 @@ DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 MAX_TOOL_CALLS_DEFAULT = 5
 MAX_ELAPSED_SECONDS_DEFAULT = 25.0
 MAX_OUTPUT_TOKENS_DEFAULT = 1024
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def load_local_env_file(env_path: Optional[Path] = None, override: bool = False) -> bool:
+    """
+    Carga de forma segura las variables definidas en el archivo `.env` de la raíz del proyecto
+    en `os.environ` para ejecuciones locales, sin requerir dependencias externas ni sobrescribir
+    variables ya definidas en el entorno (salvo que `override=True`).
+    Nunca imprime ni registra los valores leídos.
+    """
+    if not override and os.environ.get("DETECTIVE_SKIP_DOTENV") == "1":
+        return False
+
+    target_path = env_path if env_path is not None else (PROJECT_ROOT / ".env")
+    if not target_path.is_file():
+        return False
+
+    loaded_any = False
+    try:
+        raw_content = target_path.read_text(encoding="utf-8")
+        for raw_line in raw_content.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            if key.startswith("export "):
+                key = key[len("export "):].strip()
+            val = val.strip()
+            if len(val) >= 2 and ((val[0] == '"' and val[-1] == '"') or (val[0] == "'" and val[-1] == "'")):
+                val = val[1:-1].strip()
+            if not key:
+                continue
+            # Si la variable no existe en os.environ (o está vacía y el archivo provee un valor), la asignamos
+            if override or key not in os.environ or (not os.environ.get(key, "").strip() and val):
+                os.environ[key] = val
+                loaded_any = True
+    except OSError:
+        return False
+
+    return loaded_any
 
 
 class AgentConfigurationError(RuntimeError):
@@ -51,8 +93,9 @@ class AgentExecutionError(RuntimeError):
 def get_agent_runtime_status() -> Dict[str, Any]:
     """
     Informa de manera transparente si el entorno tiene configurada la API de Gemini
-    para ejecutar los agentes reales.
+    para ejecutar los agentes reales. Carga automáticamente `.env` local si existe.
     """
+    load_local_env_file()
     api_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
     model_name = (os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL).strip()
     has_key = bool(api_key and len(api_key) >= 10 and api_key != "tu_api_key_aqui")
@@ -71,11 +114,12 @@ def create_gemini_client(api_key: Optional[str] = None, timeout_ms: int = 15000)
     Inicializa el cliente oficial `google.genai.Client` con timeout acotado.
     Nunca registra ni expone la clave en mensajes de error.
     """
+    load_local_env_file()
     resolved_key = (api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
     if not resolved_key or resolved_key == "tu_api_key_aqui":
         raise AgentConfigurationError(
             "No se encontró la variable de entorno GEMINI_API_KEY configurada. "
-            "Para usar el modo de Agentes IA, configurá GEMINI_API_KEY o utilizá el Modo Local Determinístico."
+            "Para usar el modo de Agentes IA, configurá GEMINI_API_KEY en el archivo .env o utilizá el Modo Local Determinístico."
         )
 
     if not GOOGLE_GENAI_AVAILABLE:
@@ -109,6 +153,7 @@ def run_agent_tool_loop(
        - Devuelve el resultado al modelo como `function_response`.
     3. Finaliza cuando el modelo emite su respuesta final o se alcanza el límite de llamadas/tiempo.
     """
+    load_local_env_file()
     resolved_model = (model_name or os.environ.get("GEMINI_MODEL") or DEFAULT_GEMINI_MODEL).strip()
     client = llm_client if llm_client is not None else create_gemini_client()
 

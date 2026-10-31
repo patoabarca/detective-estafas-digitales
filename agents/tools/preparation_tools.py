@@ -428,3 +428,4 @@ def execute_tool_motor_deterministico(
     existente (`web/analysis_adapter.analyze_text`) una vez que la preparación fue exitosa.
     """
     return analyze_text(raw_text, input_mode=input_mode)
+

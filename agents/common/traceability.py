@@ -65,3 +65,4 @@ class AgentTracer:
 
     def get_events(self) -> List[Dict[str, Any]]:
         return [e.to_dict() for e in self._events]
+

@@ -36,8 +36,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from agents.common.contracts import AgentInputRequest
-from agents.common.llm_client import get_agent_runtime_status
+from agents.common.llm_client import get_agent_runtime_status, load_local_env_file
 from agents.orquestador.agent import OrquestadorAgent
+
+# Cargar variables de configuración desde `.env` local (si existe) sin sobrescribir el entorno
+load_local_env_file()
 from web.analysis_adapter import analyze_text
 from web.image_processor import (
     ImageValidationError,
