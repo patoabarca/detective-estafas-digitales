@@ -4,14 +4,11 @@ Detective de Estafas Digitales - Mini Aplicación Web (Streamlit).
 Interfaz accesible para la prevención y detección temprana de fraudes digitales,
 phishing e ingeniería social, diseñada para usuarios finales sin conocimientos técnicos.
 
-Permite analizar comunicaciones sospechosas mediante dos modalidades:
-1. Modalidad Texto: Copiado y pegado directo de mensajes (WhatsApp, SMS, correo, etc.).
-2. Modalidad Captura: Carga de capturas de pantalla con extracción local de texto por OCR.
-
-Reutiliza el motor determinístico de Python (scripts/) garantizando:
-- Cero conexiones a internet salientes desde el motor (Zero Network).
-- Procesamiento de imágenes 100% en memoria (sin almacenamiento permanente).
-- Generación de informes explicables y descargables en PDF.
+Soporta dos modos de operación:
+1. Modo Local Determinístico (Sin Red): análisis estático local directo.
+2. Modo Orquesta de Agentes IA (Etapa 1): Streamlit -> Agente Orquestador -> Agente Preparador
+   (con las skills `validar-entrada`, `extraer-texto-captura` y `extraer-enlaces`) ->
+   Resultado de preparación y motor determinístico.
 """
 
 from __future__ import annotations
@@ -33,11 +30,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Integración con el paquete web y el motor determinístico
+# Integración con el paquete web, agentes y el motor determinístico
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from agents.common.contracts import AgentInputRequest
+from agents.common.llm_client import get_agent_runtime_status
+from agents.orquestador.agent import OrquestadorAgent
 from web.analysis_adapter import analyze_text
 from web.image_processor import (
     ImageValidationError,
@@ -64,6 +64,10 @@ def init_session_state() -> None:
     """Inicializa variables de sesión si no existen."""
     if "analysis_result" not in st.session_state:
         st.session_state["analysis_result"] = None
+    if "agent_orchestration_response" not in st.session_state:
+        st.session_state["agent_orchestration_response"] = None
+    if "execution_engine_mode" not in st.session_state:
+        st.session_state["execution_engine_mode"] = "local"
     if "direct_text_input" not in st.session_state:
         st.session_state["direct_text_input"] = ""
     if "ocr_text_area" not in st.session_state:
@@ -81,13 +85,13 @@ def init_session_state() -> None:
 def reset_session_state() -> None:
     """Limpia todos los datos en memoria de la sesión actual."""
     st.session_state["analysis_result"] = None
+    st.session_state["agent_orchestration_response"] = None
     st.session_state["direct_text_input"] = ""
     st.session_state["ocr_text_area"] = ""
     st.session_state["ocr_url_warnings"] = []
     st.session_state["ocr_status"] = None
     st.session_state["current_mode"] = "text"
     st.session_state["last_uploaded_file_sig"] = None
-
 
 
 # =============================================================================
@@ -122,7 +126,7 @@ EJEMPLOS_PRUEBA = {
 # =============================================================================
 
 def render_sidebar(ocr_service) -> None:
-    """Renderiza la barra lateral con información académica, estado de OCR y ejemplos."""
+    """Renderiza la barra lateral con información académica, modo de ejecución, estado de OCR y ejemplos."""
     with st.sidebar:
         st.markdown("### 🎓 Proyecto de Diplomatura")
         st.markdown(
@@ -131,15 +135,46 @@ def render_sidebar(ocr_service) -> None:
         )
 
         st.markdown("---")
-        st.markdown("### 🏛️ Arquitectura: Dos Vías")
-        st.info(
-            "**1. Vía Agente de IA (Antigravity):**  \n"
-            "Interpreta lenguaje natural y activa la Skill especializada.  \n\n"
-            "**2. Vía Mini Web (Streamlit):**  \n"
-            "Interfaz directa accesible con OCR local.  \n\n"
-            "*Ambas vías reutilizan exactamente el mismo motor determinístico en Python.*",
-            icon="⚙️",
+        st.markdown("### 🤖 Modo de Ejecución")
+        mode_labels = {
+            "local": "🔒 Modo Local Determinístico (Sin Red)",
+            "agents": "🤖 Modo Orquesta de Agentes IA (Orquestador + Preparador)",
+        }
+        selected_mode = st.radio(
+            "Seleccionar modo de operación:",
+            options=["local", "agents"],
+            format_func=lambda k: mode_labels[k],
+            key="execution_engine_mode",
         )
+
+        agent_status = get_agent_runtime_status()
+        if selected_mode == "agents":
+            if agent_status["ready"]:
+                st.success(
+                    f"✅ **Agentes IA Habilitados**  \n"
+                    f"- Proveedor: `{agent_status['provider']}`  \n"
+                    f"- Modelo: `{agent_status['model']}`",
+                    icon="🤖",
+                )
+            else:
+                st.warning(
+                    "⚠️ **Credenciales de IA no configuradas**  \n"
+                    "Falta la variable `GEMINI_API_KEY` (o el paquete `google-genai`). "
+                    "Si ejecutás en este modo sin clave, el sistema informará el error sin simular la ejecución de agentes.",
+                    icon="🔑",
+                )
+            st.caption(
+                "ℹ️ **Aviso de Privacidad en Modo Agentes:** Las imágenes se procesan siempre con OCR local. "
+                "Al modelo externo (`Google Gemini API`) solo se envía el texto con ocultamiento preventivo de "
+                "patrones frecuentes (CBU/CVU, tarjetas, DNI/CUIT, emails y teléfonos). El ocultamiento reduce "
+                "la exposición, pero no garantiza eliminar el 100% de los datos sensibles en texto libre."
+            )
+        else:
+            st.info(
+                "**Modo Local Activo:** El análisis se realiza 100% fuera de línea (Zero Network) "
+                "con el motor determinístico local.",
+                icon="🛡️",
+            )
 
         st.markdown("---")
         st.markdown("### 👁️ Estado del OCR Local")
@@ -184,7 +219,7 @@ def render_sidebar(ocr_service) -> None:
 
         st.caption(
             "🔒 **Seguridad y Privacidad:** Las capturas y mensajes se procesan en memoria (RAM) "
-            "y no se guardan en el servidor. El motor opera 100% sin conexión a internet externa."
+            "y no se guardan en el servidor salvo exportación explícita del usuario."
         )
 
 
@@ -234,7 +269,7 @@ def render_results_section(report: Dict[str, Any]) -> None:
     # Identificación del origen del análisis
     input_mode = report.get("input_mode", "text")
     if input_mode == "ocr_screenshot":
-        mode_badge = "📷 **Modalidad:** Captura de Pantalla (OCR confirmado por usuario)"
+        mode_badge = "📷 **Modalidad:** Captura de Pantalla (OCR local)"
     else:
         mode_badge = "📝 **Modalidad:** Texto Pegado Directamente"
     st.caption(f"{mode_badge} • Caracteres analizados: **{report.get('input_char_count', 0)}**")
@@ -272,6 +307,52 @@ def render_results_section(report: Dict[str, Any]) -> None:
                 st.markdown(f"- `{rule}`")
         else:
             st.markdown("*No se activó ninguna regla de severidad.*")
+
+    # 6.5. Resultado de Preparación y Trazabilidad de Orquesta de Agentes (si se ejecutó en modo Agentes)
+    if "agent_orchestration" in report:
+        orch_data = report["agent_orchestration"]
+        prep_data = orch_data.get("preparation") or {}
+        privacy_data = orch_data.get("privacy_notice") or {}
+        trace_list = orch_data.get("trace_events") or []
+
+        with st.expander("🤖 Resultado del Agente Preparador y Orquestación (Etapa 1)", expanded=True):
+            st.markdown(
+                f"- **Modo de ejecución:** `{orch_data.get('execution_mode')}` (Modelo: `{orch_data.get('model_used')}`)  \n"
+                f"- **Estado del Agente Preparador:** `{prep_data.get('estado', '').upper()}` "
+                f"(Detalle: `{prep_data.get('detalle_estado', '')}`)  \n"
+                f"- **Skills cargadas desde `.agents/skills/`:** `{', '.join(prep_data.get('skills_cargadas', []))}`  \n"
+                f"- **Herramientas Python invocadas:** `{', '.join(prep_data.get('herramientas_invocadas', []))}`  \n"
+                f"- **Enlaces encontrados por Preparador ({len(prep_data.get('enlaces_encontrados', []))}):** "
+                f"{', '.join(f'`{u}`' for u in prep_data.get('enlaces_encontrados', [])) or '*Ninguno (`sin_enlaces`)*'}"
+            )
+            if prep_data.get("advertencias"):
+                st.markdown("**Advertencias de preparación/lectura:**")
+                for w in prep_data["advertencias"]:
+                    st.markdown(f"  - ⚠️ {w}")
+            if orch_data.get("orchestrator_summary"):
+                st.markdown(f"**Síntesis del Agente Orquestador:** {orch_data.get('orchestrator_summary')}")
+
+        with st.expander("🔐 Transparencia de Datos Enviados al Proveedor Externo (IA)"):
+            st.markdown(
+                f"- **Proveedor externo:** `{privacy_data.get('provider_name', 'Google Gemini API')}`  \n"
+                f"- **Caracteres enviados tras ocultamiento preventivo:** `{privacy_data.get('sent_char_count', 0)}`  \n"
+                f"- **Ocultamientos aplicados (`{privacy_data.get('redactions_count', 0)}`):** "
+                f"`{', '.join(privacy_data.get('redacted_categories', [])) or 'Ninguno detectado'}`  \n"
+                f"- **Vista previa del texto enmascarado enviado a la API:**  \n"
+                f"  `{privacy_data.get('masked_preview', '') or '(Sin texto enviado)'}`  \n"
+                f"- *{privacy_data.get('disclaimer', '')}*"
+            )
+
+        with st.expander("🧭 Trazabilidad de Eventos de Agentes y Herramientas (Sin Secretos)"):
+            if trace_list:
+                for ev in trace_list:
+                    st.markdown(
+                        f"- `[{ev.get('agent')}]` **{ev.get('event_type')}** → "
+                        f"herramienta: `{ev.get('tool')}` | estado: `{ev.get('status')}` "
+                        f"({ev.get('duration_ms', 0)} ms) — {ev.get('detail')}"
+                    )
+            else:
+                st.markdown("*Sin eventos registrados.*")
 
     # 7. Telemetría de Diagnóstico de Integridad (si está activa, sin PII)
     if "diagnostic_telemetry" in report:
@@ -377,13 +458,37 @@ def main() -> None:
             analyze_btn = st.button("🔍 Analizar Mensaje", type="primary", use_container_width=True)
 
         if analyze_btn:
-            if not text_val.strip():
-                st.warning("⚠️ Por favor ingresá un texto antes de presionar Analizar.")
+            if st.session_state.get("execution_engine_mode") == "agents":
+                with st.spinner("Ejecutando Agente Orquestador → Agente Preparador → Motor Determinístico..."):
+                    orq = OrquestadorAgent()
+                    req = AgentInputRequest(input_mode="text", text_content=text_val)
+                    orch_resp = orq.run(req)
+                    st.session_state["agent_orchestration_response"] = orch_resp.to_dict()
+                    if orch_resp.status == "error":
+                        st.session_state["analysis_result"] = None
+                        st.error(
+                            f"❌ **El modo de Agentes IA no pudo completarse ({orch_resp.error_type}):**  \n"
+                            f"{orch_resp.error_message}"
+                        )
+                        if orch_resp.trace_events:
+                            with st.expander("🧭 Ver Trazabilidad del Fallo de Agentes"):
+                                for ev in orch_resp.trace_events:
+                                    st.markdown(
+                                        f"- `[{ev.get('agent')}]` **{ev.get('event_type')}** (`{ev.get('tool')}`) "
+                                        f"→ `{ev.get('status')}`: {ev.get('detail')}"
+                                    )
+                    else:
+                        st.session_state["analysis_result"] = orch_resp.report
+                        st.session_state["current_mode"] = "text"
             else:
-                with st.spinner("Ejecutando análisis determinístico de seguridad..."):
-                    result = analyze_text(text_val, input_mode="text")
-                    st.session_state["analysis_result"] = result
-                    st.session_state["current_mode"] = "text"
+                if not text_val.strip():
+                    st.warning("⚠️ Por favor ingresá un texto antes de presionar Analizar.")
+                else:
+                    with st.spinner("Ejecutando análisis determinístico local de seguridad..."):
+                        st.session_state["agent_orchestration_response"] = None
+                        result = analyze_text(text_val, input_mode="text")
+                        st.session_state["analysis_result"] = result
+                        st.session_state["current_mode"] = "text"
 
     # -------------------------------------------------------------------------
     # TAB 2: Modalidad Captura de Pantalla + OCR
@@ -411,6 +516,7 @@ def main() -> None:
             st.session_state["ocr_status"] = None
             st.session_state["ocr_url_warnings"] = []
             st.session_state["analysis_result"] = None
+            st.session_state["agent_orchestration_response"] = None
 
         if uploaded_file is not None:
             file_bytes = uploaded_file.getvalue()
@@ -464,6 +570,48 @@ def main() -> None:
                                 else:
                                     st.error(f"Error al procesar la imagen: {ocr_res.get('error')}")
 
+                    if st.session_state.get("execution_engine_mode") == "agents":
+                        st.markdown("---")
+                        st.markdown("**🤖 Ejecución Directa por Orquesta de Agentes (Imagen → Preparador → Orquestador):**")
+                        if st.button(
+                            "🤖 Preparar y Analizar Captura con Agentes IA",
+                            type="primary",
+                            use_container_width=True,
+                            help="Delega en el Agente Orquestador y el Agente Preparador la validación binaria, extracción OCR local, detección de enlaces y evaluación.",
+                        ):
+                            with st.spinner("Orquestador delegando validación, OCR local y extracción de enlaces en Agente Preparador..."):
+                                orq = OrquestadorAgent()
+                                req = AgentInputRequest(
+                                    input_mode="ocr_screenshot",
+                                    image_bytes=file_bytes,
+                                    image_filename=uploaded_file.name,
+                                )
+                                orch_resp = orq.run(req)
+                                st.session_state["agent_orchestration_response"] = orch_resp.to_dict()
+                                if orch_resp.preparation:
+                                    st.session_state["ocr_text_area"] = orch_resp.preparation.texto_extraido_o_recibido
+                                    st.session_state["ocr_url_warnings"] = orch_resp.preparation.ocr_url_warnings
+                                if orch_resp.status == "error":
+                                    st.session_state["analysis_result"] = None
+                                    st.error(
+                                        f"❌ **El modo de Agentes IA no pudo completarse ({orch_resp.error_type}):**  \n"
+                                        f"{orch_resp.error_message}"
+                                    )
+                                    if orch_resp.trace_events:
+                                        with st.expander("🧭 Ver Trazabilidad del Fallo de Agentes"):
+                                            for ev in orch_resp.trace_events:
+                                                st.markdown(
+                                                    f"- `[{ev.get('agent')}]` **{ev.get('event_type')}** (`{ev.get('tool')}`) "
+                                                    f"→ `{ev.get('status')}`: {ev.get('detail')}"
+                                                )
+                                else:
+                                    if orch_resp.status == "incomplete":
+                                        st.warning(
+                                            "⚠️ El Agente Preparador reportó estado **INCOMPLETO** (`texto_no_extraible`): "
+                                            "la captura no contiene texto legible. Se emitió evaluación **INDETERMINADO** (nunca Riesgo Bajo)."
+                                        )
+                                    st.session_state["analysis_result"] = orch_resp.report
+                                    st.session_state["current_mode"] = "ocr_screenshot"
 
                     # Mostrar advertencias de distorsiones comunes en URLs
                     render_ocr_url_warnings(st.session_state.get("ocr_url_warnings", []))
@@ -488,13 +636,32 @@ def main() -> None:
                     )
 
                     if analyze_ocr_btn:
-                        if not ocr_text_edited.strip():
-                            st.warning("⚠️ No hay texto para analizar. Extraé el texto de la imagen o ingresalo manualmente.")
+                        if st.session_state.get("execution_engine_mode") == "agents":
+                            with st.spinner("Ejecutando Agente Orquestador → Agente Preparador sobre el texto revisado..."):
+                                orq = OrquestadorAgent()
+                                req = AgentInputRequest(input_mode="text", text_content=ocr_text_edited)
+                                orch_resp = orq.run(req)
+                                st.session_state["agent_orchestration_response"] = orch_resp.to_dict()
+                                if orch_resp.status == "error":
+                                    st.session_state["analysis_result"] = None
+                                    st.error(
+                                        f"❌ **El modo de Agentes IA no pudo completarse ({orch_resp.error_type}):**  \n"
+                                        f"{orch_resp.error_message}"
+                                    )
+                                else:
+                                    if orch_resp.report:
+                                        orch_resp.report["input_mode"] = "ocr_screenshot"
+                                    st.session_state["analysis_result"] = orch_resp.report
+                                    st.session_state["current_mode"] = "ocr_screenshot"
                         else:
-                            with st.spinner("Ejecutando análisis determinístico de seguridad..."):
-                                result = analyze_text(ocr_text_edited, input_mode="ocr_screenshot")
-                                st.session_state["analysis_result"] = result
-                                st.session_state["current_mode"] = "ocr_screenshot"
+                            if not ocr_text_edited.strip():
+                                st.warning("⚠️ No hay texto para analizar. Extraé el texto de la imagen o ingresalo manualmente.")
+                            else:
+                                with st.spinner("Ejecutando análisis determinístico local de seguridad..."):
+                                    st.session_state["agent_orchestration_response"] = None
+                                    result = analyze_text(ocr_text_edited, input_mode="ocr_screenshot")
+                                    st.session_state["analysis_result"] = result
+                                    st.session_state["current_mode"] = "ocr_screenshot"
 
             except ImageValidationError as img_err:
                 st.error(f"❌ Error de Validación de Imagen: {str(img_err)}")

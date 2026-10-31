@@ -19,6 +19,7 @@ Thumbs.db
 # Sensitive files / Secrets
 *.env
 *.env.*
+!.env.example
 *.pem
 *.key
 *.crt

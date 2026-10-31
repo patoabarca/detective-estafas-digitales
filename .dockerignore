@@ -19,6 +19,7 @@ Thumbs.db
 # Archivos sensibles y secretos (nunca incluir en la imagen)
 *.env
 *.env.*
+.env.example
 *.pem
 *.key
 *.crt
@@ -41,4 +42,3 @@ reports/
 iniciar_aplicacion.bat
 compose.yaml
 docker-compose.yml
-
