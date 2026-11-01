@@ -371,3 +371,4 @@ class AnalizadorMensajesAgent:
         )
         res.validate(analyzed_text=analyzed_text)
         return res
+

@@ -285,6 +285,11 @@ El proyecto cuenta con **115 pruebas automatizadas con `pytest`** distribuidas e
 8. **Controles de seguridad en código, orden de ejecución, privacidad de URLs/snippets y métricas de consumo:** Verifica el bloqueo de llamadas fuera de orden en el Orquestador, el rechazo de herramientas o argumentos no autorizados en el Analizador de Mensajes, la sanitización de credenciales/PII en URLs (`sanitize_url_for_external_llm`) y fragmentos de herramientas (`sanitize_snippets_for_external_llm`), y el conteo acumulado de llamadas y tokens en `usage_metrics` (4 tests).
 9. **Prueba de integración real contra la API de Google Gemini (`test_real_gemini_api_orchestration_when_configured`):** Ejecutada con `gemini-3.5-flash-lite` y datos ficticios (`PASSED`), comprobando la delegación real `Orquestador ➔ Preparador ➔ Analizador de Mensajes (5 skills en paralelo) ➔ Motor Determinístico`, con `9` llamadas totales al modelo, `10` llamadas a herramientas y `24.208` tokens acumulados (`23.453` de entrada + `755` de salida).
 
+### Resumen de Verificación Efectivamente Realizada (Etapa 2):
+- **Suite determinística y con cliente LLM simulado (`pytest`):** `114 passed, 1 skipped` ejecutada tanto en el entorno virtual local de Windows (`.venv`) como dentro del contenedor Docker (`docker exec -e DETECTIVE_SKIP_DOTENV=1 -e GEMINI_API_KEY= detective-estafas-web pytest -v`).
+- **Integración en vivo con Google Gemini API (`gemini-3.5-flash-lite`):** Verificada mediante `test_real_gemini_api_orchestration_when_configured` (`1 passed`), comprobando en las trazas la delegación real `Orquestador ➔ Preparador ➔ Analizador de Mensajes ➔ Motor Determinístico`, la revisión de las 5 categorías obligatorias y el consumo acumulado (`9` llamadas al modelo, `10` llamadas a herramientas y `24.208` tokens totales).
+- **Comprobación manual en la aplicación (`http://localhost:8502`):** Verificada manualmente por el usuario sobre la aplicación en ejecución con la Etapa 2 integrada, confirmando su correcto funcionamiento.
+
 ---
 
 ## ⚠️ 7. Honestidad Metodológica y Limitaciones

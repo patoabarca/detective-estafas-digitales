@@ -32,3 +32,4 @@ Devuelve un diccionario estructurado con:
 - **Responsabilidad acotada:** No evalúa amenazas de bloqueo, premios, pedidos de credenciales ni pedidos de dinero; no analiza URLs, no ejecuta OCR ni asigna puntaje de riesgo final.
 - **Evidencia verificada:** Solo devuelve fragmentos que existen literalmente en el texto preparado.
 - **Manejo de errores:** Si no hay texto preparado válido en la sesión o ocurre un fallo interno, devuelve `status: "tool_error"` con `error_message` explícito para que el agente reporte el análisis como `"error"`.
+

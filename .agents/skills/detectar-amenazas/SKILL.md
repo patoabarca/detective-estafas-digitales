@@ -32,3 +32,4 @@ Devuelve un diccionario estructurado con:
 - **Responsabilidad acotada:** No evalúa urgencia genérica aislada, premios, credenciales ni pagos; no analiza URLs, no hace OCR ni calcula el nivel de riesgo final.
 - **Evidencia verificada:** Solo acepta fragmentos presentes en el texto analizado.
 - **Manejo de errores:** Ante falta de texto preparado o excepción técnica, devuelve `status: "tool_error"` y detalle del error.
+

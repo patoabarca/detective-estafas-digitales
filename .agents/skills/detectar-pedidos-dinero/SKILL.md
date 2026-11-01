@@ -35,3 +35,4 @@ Devuelve un diccionario estructurado con:
 - **Responsabilidad acotada:** No evalúa la promesa del premio en sí (`detectar-premios`), ni amenazas, urgencia o credenciales; no analiza URLs, no hace OCR ni calcula el riesgo final.
 - **Evidencia verificada:** Comprueba que todo fragmento reportado exista exactamente en el texto preparado.
 - **Manejo de errores:** Devuelve `status: "tool_error"` si no hay texto preparado en la sesión o si ocurre una excepción.
+

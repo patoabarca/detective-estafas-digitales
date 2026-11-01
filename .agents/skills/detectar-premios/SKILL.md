@@ -32,3 +32,4 @@ Devuelve un diccionario estructurado con:
 - **Responsabilidad acotada:** No evalúa el pedido posterior de dinero (`FRA-PAGO-ANTICIPADO`, que corresponde a `detectar-pedidos-dinero`), ni urgencia, amenazas o credenciales; no analiza URLs ni asigna riesgo global.
 - **Evidencia verificada:** Todo fragmento devuelto debe pertenecer literalmente al texto preparado.
 - **Manejo de errores:** Si falla la ejecución o no existe texto preparado, devuelve `status: "tool_error"`.
+

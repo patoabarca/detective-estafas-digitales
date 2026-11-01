@@ -33,3 +33,4 @@ Devuelve un diccionario estructurado con:
 - **Responsabilidad acotada:** No evalúa transferencias de dinero ni DEBIN, no analiza URLs, no realiza OCR ni calcula el puntaje de riesgo final.
 - **Evidencia verificada y privacidad:** Verifica que los fragmentos existan en el texto preparado y aplica enmascaramiento preventivo antes de devolverlos al modelo externo.
 - **Manejo de errores:** Informa cualquier fallo técnico mediante `status: "tool_error"`.
+
