@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 import re
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import unicodedata
 
 # Asegurar que el directorio scripts/ esté disponible en sys.path
@@ -25,9 +25,17 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 try:
+    from analyzer import TextAnalyzer
+    from report_generator import ReportGenerator
+    from risk_classifier import RiskClassifier
+    from url_analyzer import analyze_urls_in_text
     from worker import run_pipeline, load_policy
 except ImportError:
     # Importación alternativa si sys.path difiere
+    from scripts.analyzer import TextAnalyzer
+    from scripts.report_generator import ReportGenerator
+    from scripts.risk_classifier import RiskClassifier
+    from scripts.url_analyzer import analyze_urls_in_text
     from scripts.worker import run_pipeline, load_policy
 
 # Telemetría de diagnóstico desactivada por defecto (activable vía variable de entorno)
@@ -92,6 +100,8 @@ def analyze_text(
     input_mode: str = "text",
     custom_policy: Optional[Dict[str, Any]] = None,
     enable_diagnostics: Optional[bool] = None,
+    precomputed_agent_indicators: Optional[List[Dict[str, Any]]] = None,
+    precomputed_url_analyses: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Ejecuta el análisis de riesgo determinístico sobre el texto provisto.
@@ -101,6 +111,9 @@ def analyze_text(
         input_mode (str): Modalidad de entrada ('text' o 'ocr_screenshot').
         custom_policy (dict, opcional): Política personalizada de ponderaciones.
         enable_diagnostics (bool, opcional): Forzar inclusión de telemetría de diagnóstico.
+        precomputed_agent_indicators (list, opcional): Hallazgos validados del Agente Analizador
+            de Mensajes para las 5 categorías delegadas (evita reejecución o doble puntuación).
+        precomputed_url_analyses (list, opcional): Análisis estático de URLs ya preparado en la sesión.
 
     Retorna:
         Dict[str, Any]: Reporte estructurado con nivel de riesgo, indicadores,
@@ -128,7 +141,23 @@ def analyze_text(
         }
 
     try:
-        report = run_pipeline(cleaned_text, policy)
+        if precomputed_agent_indicators is not None:
+            text_analyzer = TextAnalyzer(policy)
+            text_analysis = text_analyzer.compose_analysis_from_agent_findings(
+                cleaned_text, precomputed_agent_indicators
+            )
+            url_analyses = (
+                precomputed_url_analyses
+                if precomputed_url_analyses is not None
+                else analyze_urls_in_text(cleaned_text)
+            )
+            risk_classifier = RiskClassifier(policy)
+            risk_data = risk_classifier.classify(cleaned_text, text_analysis, url_analyses)
+            report_gen = ReportGenerator()
+            report = report_gen.generate_json_report(risk_data, text_analysis, url_analyses)
+        else:
+            report = run_pipeline(cleaned_text, policy)
+
         # Añadir metadatos de la modalidad de entrada
         report["input_mode"] = input_mode
         report["input_char_count"] = len(cleaned_text)

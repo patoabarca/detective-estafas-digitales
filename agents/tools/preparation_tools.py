@@ -422,10 +422,20 @@ def execute_tool_extraer_enlaces(
 def execute_tool_motor_deterministico(
     raw_text: str,
     input_mode: str = "text",
+    precomputed_agent_indicators: Optional[List[Dict[str, Any]]] = None,
+    precomputed_url_analyses: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Herramienta acotada para que el Agente Orquestador invoque el motor determinístico
-    existente (`web/analysis_adapter.analyze_text`) una vez que la preparación fue exitosa.
+    existente (`web/analysis_adapter.analyze_text`) una vez que la preparación y el
+    análisis del mensaje finalizaron con estado 'correcto'.
+    Recibe los hallazgos validados del Agente Analizador de Mensajes para evaluarlos
+    sin reejecutar las 5 categorías ni duplicar puntuaciones.
     """
-    return analyze_text(raw_text, input_mode=input_mode)
+    return analyze_text(
+        raw_text,
+        input_mode=input_mode,
+        precomputed_agent_indicators=precomputed_agent_indicators,
+        precomputed_url_analyses=precomputed_url_analyses,
+    )
 

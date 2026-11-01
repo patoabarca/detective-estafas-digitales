@@ -311,26 +311,53 @@ def render_results_section(report: Dict[str, Any]) -> None:
         else:
             st.markdown("*No se activó ninguna regla de severidad.*")
 
-    # 6.5. Resultado de Preparación y Trazabilidad de Orquesta de Agentes (si se ejecutó en modo Agentes)
+    # 6.5. Resultado de Preparación, Análisis de Mensaje y Trazabilidad de Orquesta (si se ejecutó en modo Agentes)
     if "agent_orchestration" in report:
         orch_data = report["agent_orchestration"]
         prep_data = orch_data.get("preparation") or {}
+        msg_data = orch_data.get("message_analysis") or {}
+        usage_data = orch_data.get("usage_metrics") or {}
         privacy_data = orch_data.get("privacy_notice") or {}
         trace_list = orch_data.get("trace_events") or []
 
-        with st.expander("🤖 Resultado del Agente Preparador y Orquestación (Etapa 1)", expanded=True):
+        with st.expander("🤖 Resultado del Agente Preparador y Analizador de Mensajes (Etapas 1 y 2)", expanded=True):
             st.markdown(
                 f"- **Modo de ejecución:** `{orch_data.get('execution_mode')}` (Modelo: `{orch_data.get('model_used')}`)  \n"
                 f"- **Estado del Agente Preparador:** `{prep_data.get('estado', '').upper()}` "
                 f"(Detalle: `{prep_data.get('detalle_estado', '')}`)  \n"
-                f"- **Skills cargadas desde `.agents/skills/`:** `{', '.join(prep_data.get('skills_cargadas', []))}`  \n"
-                f"- **Herramientas Python invocadas:** `{', '.join(prep_data.get('herramientas_invocadas', []))}`  \n"
+                f"- **Skills del Preparador:** `{', '.join(prep_data.get('skills_cargadas', []))}`  \n"
+                f"- **Herramientas del Preparador invocadas:** `{', '.join(prep_data.get('herramientas_invocadas', []))}`  \n"
                 f"- **Enlaces encontrados por Preparador ({len(prep_data.get('enlaces_encontrados', []))}):** "
                 f"{', '.join(f'`{u}`' for u in prep_data.get('enlaces_encontrados', [])) or '*Ninguno (`sin_enlaces`)*'}"
             )
+            if msg_data:
+                st.markdown("---")
+                st.markdown(
+                    f"- **Estado del Agente Analizador de Mensajes:** `{msg_data.get('estado', '').upper()}`  \n"
+                    f"- **Skills del Analizador cargadas:** `{', '.join(msg_data.get('skills_cargadas', []))}`  \n"
+                    f"- **Categorías revisadas ({len(msg_data.get('categorias_revisadas', []))}/5):** "
+                    f"`{', '.join(msg_data.get('categorias_revisadas', [])) or 'Ninguna'}`  \n"
+                    f"- **Categorías revisadas sin hallazgos:** "
+                    f"`{', '.join(msg_data.get('categorias_sin_hallazgos', [])) or 'Ninguna'}`  \n"
+                    f"- **Categorías no revisadas:** "
+                    f"`{', '.join(msg_data.get('categorias_no_revisadas', [])) or 'Ninguna (todas revisadas)'}`  \n"
+                    f"- **Señales detectadas por el Analizador ({len(msg_data.get('senales_encontradas', []))}):** "
+                    f"`{', '.join(s.get('id_senal', '') for s in msg_data.get('senales_encontradas', [])) or 'Ninguna'}`"
+                )
+            if usage_data:
+                st.markdown(
+                    f"- **Consumo acumulado de la solicitud:** `{usage_data.get('llm_calls_total', 0)}` llamadas al modelo, "
+                    f"`{usage_data.get('tool_calls_total', 0)}` llamadas a herramientas, "
+                    f"`{usage_data.get('total_tokens', 0)}` tokens totales "
+                    f"(`{usage_data.get('prompt_tokens_total', 0)}` entrada + `{usage_data.get('output_tokens_total', 0)}` salida)."
+                )
             if prep_data.get("advertencias"):
                 st.markdown("**Advertencias de preparación/lectura:**")
                 for w in prep_data["advertencias"]:
+                    st.markdown(f"  - ⚠️ {w}")
+            if msg_data.get("advertencias"):
+                st.markdown("**Advertencias del analizador de mensajes:**")
+                for w in msg_data["advertencias"]:
                     st.markdown(f"  - ⚠️ {w}")
             if orch_data.get("orchestrator_summary"):
                 st.markdown(f"**Síntesis del Agente Orquestador:** {orch_data.get('orchestrator_summary')}")
@@ -462,7 +489,7 @@ def main() -> None:
 
         if analyze_btn:
             if st.session_state.get("execution_engine_mode") == "agents":
-                with st.spinner("Ejecutando Agente Orquestador → Agente Preparador → Motor Determinístico..."):
+                with st.spinner("Ejecutando Orquestador → Preparador → Analizador de Mensajes → Evaluación..."):
                     orq = OrquestadorAgent()
                     req = AgentInputRequest(input_mode="text", text_content=text_val)
                     orch_resp = orq.run(req)
@@ -575,14 +602,14 @@ def main() -> None:
 
                     if st.session_state.get("execution_engine_mode") == "agents":
                         st.markdown("---")
-                        st.markdown("**🤖 Ejecución Directa por Orquesta de Agentes (Imagen → Preparador → Orquestador):**")
+                        st.markdown("**🤖 Ejecución Directa por Orquesta de Agentes (Imagen → Preparador → Analizador de Mensajes → Evaluación):**")
                         if st.button(
                             "🤖 Preparar y Analizar Captura con Agentes IA",
                             type="primary",
                             use_container_width=True,
-                            help="Delega en el Agente Orquestador y el Agente Preparador la validación binaria, extracción OCR local, detección de enlaces y evaluación.",
+                            help="Delega en el Agente Orquestador, Agente Preparador y Agente Analizador de Mensajes la validación binaria, extracción OCR local, detección de señales y evaluación.",
                         ):
-                            with st.spinner("Orquestador delegando validación, OCR local y extracción de enlaces en Agente Preparador..."):
+                            with st.spinner("Orquestador delegando en Agente Preparador y Agente Analizador de Mensajes..."):
                                 orq = OrquestadorAgent()
                                 req = AgentInputRequest(
                                     input_mode="ocr_screenshot",
@@ -640,7 +667,7 @@ def main() -> None:
 
                     if analyze_ocr_btn:
                         if st.session_state.get("execution_engine_mode") == "agents":
-                            with st.spinner("Ejecutando Agente Orquestador → Agente Preparador sobre el texto revisado..."):
+                            with st.spinner("Ejecutando Orquestador → Preparador → Analizador de Mensajes sobre el texto revisado..."):
                                 orq = OrquestadorAgent()
                                 req = AgentInputRequest(input_mode="text", text_content=ocr_text_edited)
                                 orch_resp = orq.run(req)

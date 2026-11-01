@@ -134,6 +134,104 @@ class TextAnalyzer:
             "entity_mentions": entities,
         }
 
+    def compose_analysis_from_agent_findings(
+        self,
+        text: str,
+        agent_indicators: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Construye el diccionario `text_analysis` para `RiskClassifier` y `ReportGenerator`
+        utilizando los hallazgos validados del `AnalizadorMensajesAgent` para las 5 categorías
+        delegadas (urgencia, amenazas, premios, pedidos de datos, pedidos de dinero) sin volver
+        a ejecutar esas 5 detecciones ni duplicar reglas.
+        Complementa únicamente las 2 verificaciones transversales (`SEC-PROMPT-INJECTION` y
+        `SUP-SUPLANTACION-ENTIDAD`) manteniendo el orden canónico y la equivalencia exacta de puntaje.
+        """
+        if not text:
+            return {
+                "indicators": [],
+                "prompt_injection_detected": False,
+                "prompt_injection_details": [],
+                "entity_mentions": [],
+            }
+
+        # Deduplicar los indicadores recibidos del agente por su id estable
+        by_id: Dict[str, Dict[str, Any]] = {}
+        for ind in agent_indicators or []:
+            ind_id = str(ind.get("id", "")).strip()
+            if not ind_id:
+                continue
+            if ind_id not in by_id:
+                by_id[ind_id] = {
+                    "id": ind_id,
+                    "category": ind.get("category", ""),
+                    "severity": ind.get("severity", "ALTA"),
+                    "description": ind.get("description", ""),
+                    "evidence_snippets": list(ind.get("evidence_snippets") or []),
+                }
+                if "skill_category" in ind:
+                    by_id[ind_id]["skill_category"] = ind["skill_category"]
+            else:
+                existing_snips = by_id[ind_id]["evidence_snippets"]
+                for snip in ind.get("evidence_snippets") or []:
+                    if snip not in existing_snips:
+                        existing_snips.append(snip)
+
+        indicators: List[Dict[str, Any]] = []
+
+        # 1. Verificación transversal: Prompt Injection
+        injection_detected, injection_snippets = self._detect_prompt_injection(text)
+        if injection_detected:
+            indicators.append({
+                "id": "SEC-PROMPT-INJECTION",
+                "category": "seguridad_ia",
+                "severity": "CRITICA",
+                "description": "El mensaje contiene directivas diseñadas para manipular, secuestrar o eludir las instrucciones del agente de IA (Prompt Injection).",
+                "evidence_snippets": injection_snippets,
+            })
+
+        # 2-7. Insertar los hallazgos del Agente Analizador de Mensajes en el orden canónico
+        canonical_agent_order = [
+            "ING-AMENAZA-BLOQUEO",
+            "ING-URGENCIA-ARTIFICIAL",
+            "FRA-CAPTURA-CREDENCIALES",
+            "FRA-PREMIO-INESPERADO",
+            "FRA-PAGO-ANTICIPADO",
+            "FRA-DEBIN-ENGANOSO",
+        ]
+        for sig_id in canonical_agent_order:
+            if sig_id in by_id:
+                indicators.append(by_id[sig_id])
+
+        # 8. Verificación transversal: Suplantación contextual usando los hallazgos reales del agente
+        context_is_suspicious = any(
+            sig_id in by_id
+            for sig_id in (
+                "ING-AMENAZA-BLOQUEO",
+                "FRA-CAPTURA-CREDENCIALES",
+                "FRA-PAGO-ANTICIPADO",
+                "FRA-PREMIO-INESPERADO",
+            )
+        )
+        entity_detected, entity_snippets, entities = self._detect_entity_impersonation(
+            text, context_is_suspicious
+        )
+        if entity_detected:
+            indicators.append({
+                "id": "SUP-SUPLANTACION-ENTIDAD",
+                "category": "suplantacion",
+                "severity": "MEDIA",
+                "description": f"Mención de entidades oficiales o financieras ({', '.join(entities)}) en combinación con solicitudes de acción o amenazas.",
+                "evidence_snippets": entity_snippets,
+            })
+
+        return {
+            "indicators": indicators,
+            "prompt_injection_detected": injection_detected,
+            "prompt_injection_details": injection_snippets,
+            "entity_mentions": entities,
+        }
+
     # =========================================================================
     # Reglas y Expresiones Regulares Especializadas
     # =========================================================================
