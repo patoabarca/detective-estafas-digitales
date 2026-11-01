@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import os
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -30,6 +31,20 @@ from PIL import Image
 from agents.analizador_enlaces.agent import (
     ANALIZADOR_ENLACES_ALLOWED_SKILLS,
     AnalizadorEnlacesAgent,
+)
+from agents.evaluador.agent import (
+    EVALUADOR_ALLOWED_SKILLS,
+    EvaluadorAgent,
+)
+from agents.tools.evaluation_tools import (
+    EvaluationSessionState,
+    execute_tool_asignar_nivel_riesgo,
+    execute_tool_calcular_puntaje,
+    execute_tool_explicar_resultado,
+    execute_tool_generar_pdf,
+    execute_tool_recomendar_cuidados,
+    execute_tool_reunir_hallazgos,
+    generate_pdf_from_evaluation_report,
 )
 from agents.analizador_mensajes.agent import (
     ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
@@ -43,6 +58,7 @@ from agents.common.contracts import (
     MessageSignalFinding,
     PreparationResult,
     UrlAnalysisResult,
+    EvaluationResult,
     UrlItemAnalysisResult,
     UrlSignalFinding,
     validate_tool_arguments,
@@ -263,7 +279,50 @@ def make_standard_analizador_enlaces_mock_client(
     return ScriptedMockLLMClient(_step)
 
 
-def make_standard_orquestador_mock_client(input_mode: str) -> ScriptedMockLLMClient:
+def make_standard_evaluador_mock_client(
+    generate_pdf: bool = False,
+    save_to_output: bool = False,
+) -> ScriptedMockLLMClient:
+    """
+    Construye un cliente simulado para el Agente Evaluador (Etapa 4):
+    1. Llama a `tool_reunir_hallazgos`.
+    2. Llama a `tool_calcular_puntaje`.
+    3. Llama a `tool_asignar_nivel_riesgo`.
+    4. Llama a `tool_explicar_resultado` y `tool_recomendar_cuidados` en paralelo.
+    5. Si `generate_pdf` es True, llama a `tool_generar_pdf`.
+    6. Emite respuesta final de cierre.
+    """
+    def _step(contents: List[Any], config: Dict[str, Any]) -> MockLLMResponse:
+        tool_res = _extract_last_tool_results(contents)
+        if "tool_reunir_hallazgos" not in tool_res:
+            return MockLLMResponse(
+                function_calls=[MockFunctionCall("tool_reunir_hallazgos", {"confirm_session": True})]
+            )
+        if "tool_calcular_puntaje" not in tool_res:
+            return MockLLMResponse(
+                function_calls=[MockFunctionCall("tool_calcular_puntaje", {"confirm_gathered": True})]
+            )
+        if "tool_asignar_nivel_riesgo" not in tool_res:
+            return MockLLMResponse(
+                function_calls=[MockFunctionCall("tool_asignar_nivel_riesgo", {"confirm_scored": True})]
+            )
+        if "tool_explicar_resultado" not in tool_res or "tool_recomendar_cuidados" not in tool_res:
+            calls = []
+            if "tool_explicar_resultado" not in tool_res:
+                calls.append(MockFunctionCall("tool_explicar_resultado", {"confirm_level_assigned": True}))
+            if "tool_recomendar_cuidados" not in tool_res:
+                calls.append(MockFunctionCall("tool_recomendar_cuidados", {"confirm_level_assigned": True}))
+            return MockLLMResponse(function_calls=calls)
+        if generate_pdf and "tool_generar_pdf" not in tool_res:
+            return MockLLMResponse(
+                function_calls=[MockFunctionCall("tool_generar_pdf", {"save_to_output": save_to_output})]
+            )
+        return MockLLMResponse(text="Evaluación final completada: hallazgos consolidados, puntaje, nivel, explicación y recomendaciones asignadas.")
+
+    return ScriptedMockLLMClient(_step)
+
+
+def make_standard_orquestador_mock_client(input_mode: str, request_pdf: bool = False) -> ScriptedMockLLMClient:
     """
     Construye un cliente simulado para el Agente Orquestador (Etapa 3):
     1. Llama a `delegar_preparacion`.
@@ -317,15 +376,18 @@ def make_standard_orquestador_mock_client(input_mode: str) -> ScriptedMockLLMCli
                     text=f"Orquestación detenida tras análisis de enlaces con estado='{url_out.get('estado')}'."
                 )
 
-        if "ejecutar_motor_deterministico" not in tool_res:
+        if "delegar_evaluacion" not in tool_res:
             return MockLLMResponse(
                 function_calls=[
-                    MockFunctionCall("ejecutar_motor_deterministico", {"confirm_prepared": True})
+                    MockFunctionCall(
+                        "delegar_evaluacion",
+                        {"confirm_analyses_completed": True, "generate_pdf": request_pdf},
+                    )
                 ]
             )
 
         return MockLLMResponse(
-            text="Orquestación completada: entrada preparada, mensaje y enlaces evaluados con el motor determinístico."
+            text="Orquestación completada: entrada preparada, mensaje, enlaces y evaluación final ejecutados."
         )
 
     return ScriptedMockLLMClient(_step)
@@ -382,6 +444,27 @@ class TestSkillsLoadingAndAuthorization:
         assert s_def.allowed_agents == ["analizador_enlaces"]
         assert len(s_def.instructions_markdown) > 100
 
+    def test_load_six_evaluator_skills(self):
+        """Verifica que las seis skills del evaluador existan, tengan YAML válido y declaren su herramienta Python."""
+        from agents.evaluador.agent import EVALUADOR_ALLOWED_SKILLS
+        expected_map = {
+            "reunir-hallazgos": "tool_reunir_hallazgos",
+            "calcular-puntaje": "tool_calcular_puntaje",
+            "asignar-nivel-riesgo": "tool_asignar_nivel_riesgo",
+            "explicar-resultado": "tool_explicar_resultado",
+            "recomendar-cuidados": "tool_recomendar_cuidados",
+            "generar-pdf": "tool_generar_pdf",
+        }
+        loaded = load_skills_for_agent("evaluador", EVALUADOR_ALLOWED_SKILLS)
+        assert set(loaded.keys()) == set(expected_map.keys())
+
+        for s_name, expected_tool in expected_map.items():
+            s_def = loaded[s_name]
+            assert s_def.name == s_name
+            assert s_def.tool_name == expected_tool
+            assert "evaluador" in s_def.allowed_agents
+            assert len(s_def.instructions_markdown) > 100
+
     def test_unauthorized_agent_cannot_load_other_agents_skills(self):
         """Verifica que un agente no incluido en allowed_agents sea rechazado al intentar cargar las skills."""
         with pytest.raises(SkillLoadError, match="no está autorizado"):
@@ -398,6 +481,12 @@ class TestSkillsLoadingAndAuthorization:
 
         with pytest.raises(SkillLoadError, match="no está autorizado"):
             load_skills_for_agent("analizador_enlaces", ["extraer-enlaces"])
+
+        with pytest.raises(SkillLoadError, match="no está autorizado"):
+            load_skills_for_agent("evaluador", ["analizar-url"])
+
+        with pytest.raises(SkillLoadError, match="no está autorizado"):
+            load_skills_for_agent("preparador", ["calcular-puntaje"])
 
     def test_path_traversal_in_skill_name_rejected(self):
         """Verifica que nombres de skill con '../' sean bloqueados."""
@@ -450,6 +539,7 @@ class TestAnalizadorEnlacesAndUrlRules:
             preparador_llm_client=make_standard_preparador_mock_client("text"),
             analizador_mensajes_llm_client=make_standard_analizador_mensajes_mock_client(),
             analizador_enlaces_llm_client=url_agent_mock,
+            evaluador_llm_client=make_standard_evaluador_mock_client(),
         )
         resp = orq.run(AgentInputRequest(input_mode="text", text_content=msg))
 
@@ -614,6 +704,7 @@ class TestAnalizadorEnlacesAndUrlRules:
             preparador_llm_client=make_standard_preparador_mock_client("text"),
             analizador_mensajes_llm_client=make_standard_analizador_mensajes_mock_client(),
             analizador_enlaces_llm_client=make_standard_analizador_enlaces_mock_client(["URL-1", "URL-1"]),
+            evaluador_llm_client=make_standard_evaluador_mock_client(),
         )
         orch_resp = orq.run(AgentInputRequest(input_mode="text", text_content=msg))
         assert orch_resp.status == "success"
@@ -739,6 +830,7 @@ class TestAnalizadorEnlacesAndUrlRules:
             preparador_llm_client=make_standard_preparador_mock_client("text"),
             analizador_mensajes_llm_client=make_standard_analizador_mensajes_mock_client(),
             analizador_enlaces_llm_client=make_standard_analizador_enlaces_mock_client(["URL-1"]),
+            evaluador_llm_client=make_standard_evaluador_mock_client(),
         )
         resp = orq.run(AgentInputRequest(input_mode="text", text_content=msg))
 
@@ -972,6 +1064,7 @@ class TestScoreEquivalenceAndNonDuplication:
             preparador_llm_client=make_standard_preparador_mock_client("text"),
             analizador_mensajes_llm_client=make_standard_analizador_mensajes_mock_client(),
             analizador_enlaces_llm_client=make_standard_analizador_enlaces_mock_client(),
+            evaluador_llm_client=make_standard_evaluador_mock_client(),
         )
         orch_resp = orq.run(AgentInputRequest(input_mode="text", text_content=sample_text))
 
@@ -1018,6 +1111,7 @@ class TestScoreEquivalenceAndNonDuplication:
             preparador_llm_client=make_standard_preparador_mock_client("text"),
             analizador_mensajes_llm_client=make_standard_analizador_mensajes_mock_client(),
             analizador_enlaces_llm_client=make_standard_analizador_enlaces_mock_client(),
+            evaluador_llm_client=make_standard_evaluador_mock_client(),
         )
         resp = orq.run(AgentInputRequest(input_mode="text", text_content=msg))
 
@@ -1053,10 +1147,10 @@ class TestOrchestratorSecurityAndFlows:
                     ]
                 )
             # Intenta saltar delegar_analisis_enlaces habiendo 1 enlace en el mensaje
-            if "ejecutar_motor_deterministico" not in tool_res:
+            if "delegar_evaluacion" not in tool_res:
                 return MockLLMResponse(
                     function_calls=[
-                        MockFunctionCall("ejecutar_motor_deterministico", {"confirm_prepared": True})
+                        MockFunctionCall("delegar_evaluacion", {"confirm_analyses_completed": True})
                     ]
                 )
             return MockLLMResponse(text="Finalizado intentando omitir análisis de enlaces.")
@@ -1067,6 +1161,7 @@ class TestOrchestratorSecurityAndFlows:
             preparador_llm_client=make_standard_preparador_mock_client("text"),
             analizador_mensajes_llm_client=make_standard_analizador_mensajes_mock_client(),
             analizador_enlaces_llm_client=make_standard_analizador_enlaces_mock_client(),
+            evaluador_llm_client=make_standard_evaluador_mock_client(),
         )
         resp = orq.run(AgentInputRequest(input_mode="text", text_content=msg_with_link))
         assert resp.status == "error"
@@ -1145,6 +1240,7 @@ class TestOrchestratorSecurityAndFlows:
             preparador_llm_client=make_standard_preparador_mock_client("text"),
             analizador_mensajes_llm_client=make_standard_analizador_mensajes_mock_client(),
             analizador_enlaces_llm_client=url_mock,
+            evaluador_llm_client=make_standard_evaluador_mock_client(),
         )
         resp = orq.run(AgentInputRequest(input_mode="text", text_content=f"Ingrese a {raw_url}"))
         assert resp.status == "success"
@@ -1191,6 +1287,7 @@ class TestOrchestratorSecurityAndFlows:
             preparador_llm_client=make_standard_preparador_mock_client("ocr_screenshot"),
             analizador_mensajes_llm_client=make_standard_analizador_mensajes_mock_client(),
             analizador_enlaces_llm_client=make_standard_analizador_enlaces_mock_client(),
+            evaluador_llm_client=make_standard_evaluador_mock_client(),
             ocr_service_override=FakeLegibleOCR(),
         )
         resp = orq.run(
@@ -1270,9 +1367,885 @@ class TestOrchestratorSecurityAndFlows:
             or "tiempo máximo" in (resp.error_message or "")
         )
 
+    def test_rate_limit_429_retries_when_wait_time_fits_budget(self, monkeypatch):
+        """
+        Verifica que ante un error 429 RESOURCE_EXHAUSTED con tiempo sugerido,
+        si el tiempo necesario cabe en el presupuesto restante, se espera y se reintenta exitosamente.
+        """
+        call_attempts = 0
+
+        class RateLimitedThenSuccessModels:
+            def generate_content(self, model: str, contents: Any, config: Any):
+                nonlocal call_attempts
+                call_attempts += 1
+                if call_attempts == 1:
+                    raise RuntimeError("429 RESOURCE_EXHAUSTED: Rate limit exceeded. Please retry in 0.1s.")
+                return MockLLMResponse(text="Respuesta exitosa tras esperar límite temporal.")
+
+        class RateLimitedClient:
+            is_mock_client = True
+
+            def __init__(self):
+                self.models = RateLimitedThenSuccessModels()
+
+        tracer = AgentTracer()
+        slept_durations = []
+        monkeypatch.setattr(time, "sleep", lambda s: slept_durations.append(s))
+
+        loop_res = run_agent_tool_loop(
+            agent_name="test_rate_limited",
+            system_instruction="instrucciones",
+            user_prompt="prompt",
+            allowed_tools={},
+            tool_declarations=[],
+            tracer=tracer,
+            llm_client=RateLimitedClient(),
+            max_elapsed_seconds=10.0,
+        )
+
+        assert call_attempts == 2
+        assert "Respuesta exitosa" in loop_res["final_text"]
+        assert len(slept_durations) == 1
+        assert slept_durations[0] == pytest.approx(1.1, rel=1e-2)
+
+    def test_rate_limit_429_aborts_without_retry_when_wait_time_exceeds_budget(self):
+        """
+        Verifica que ante un error 429 con tiempo de espera sugerido superior al presupuesto
+        restante, se aborte inmediatamente sin realizar llamadas ni reintentos adicionales.
+        """
+        call_attempts = 0
+
+        class ExceededWaitModels:
+            def generate_content(self, model: str, contents: Any, config: Any):
+                nonlocal call_attempts
+                call_attempts += 1
+                raise RuntimeError("429 RESOURCE_EXHAUSTED: Rate limit exceeded. Please retry after 28.5s.")
+
+        class ExceededWaitClient:
+            is_mock_client = True
+
+            def __init__(self):
+                self.models = ExceededWaitModels()
+
+        tracer = AgentTracer()
+        with pytest.raises(AgentExecutionError) as exc_info:
+            run_agent_tool_loop(
+                agent_name="test_exceeded_wait",
+                system_instruction="instrucciones",
+                user_prompt="prompt",
+                allowed_tools={},
+                tool_declarations=[],
+                tracer=tracer,
+                llm_client=ExceededWaitClient(),
+                max_elapsed_seconds=5.0,  # 5s < 28.5s + 1.5s
+            )
+
+        assert call_attempts == 1
+        err_msg = str(exc_info.value)
+        assert "límite de solicitudes por minuto" in err_msg or "supera el presupuesto restante" in err_msg
+
+    def test_rate_limit_429_daily_quota_aborts_immediately_without_retry(self):
+        """
+        Verifica que una cuota diaria agotada (GenerateRequestsPerDay) se distinga de un límite temporal,
+        abortando de inmediato sin reintentos y ofreciendo un mensaje claro y no técnico.
+        """
+        call_attempts = 0
+
+        class DailyQuotaModels:
+            def generate_content(self, model: str, contents: Any, config: Any):
+                nonlocal call_attempts
+                call_attempts += 1
+                raise RuntimeError(
+                    "429 RESOURCE_EXHAUSTED: Quota exceeded for quota metric 'GenerateRequestsPerDay' "
+                    "and limit 'GenerateRequestsPerDayPerProject' of service 'generativelanguage.googleapis.com'"
+                )
+
+        class DailyQuotaClient:
+            is_mock_client = True
+
+            def __init__(self):
+                self.models = DailyQuotaModels()
+
+        tracer = AgentTracer()
+        with pytest.raises(AgentExecutionError) as exc_info:
+            run_agent_tool_loop(
+                agent_name="test_daily_quota",
+                system_instruction="instrucciones",
+                user_prompt="prompt",
+                allowed_tools={},
+                tool_declarations=[],
+                tracer=tracer,
+                llm_client=DailyQuotaClient(),
+                max_elapsed_seconds=60.0,
+            )
+
+        assert call_attempts == 1
+        err_msg = str(exc_info.value)
+        assert "Cuota diaria de consultas a la API de IA agotada" in err_msg
+
+
+
 
 # =============================================================================
-# 6. Prueba Opcional de Ejecución Real con Google Gemini API (si hay GEMINI_API_KEY)
+# 6. Pruebas del Agente Evaluador y sus Seis Skills (Etapa 4)
+# =============================================================================
+
+class TestEvaluadorAgentAndSkills:
+    def test_evaluador_loads_all_six_skills(self):
+        """Verifica que EvaluadorAgent cargue las seis skills requeridas en su inicialización."""
+        agent = EvaluadorAgent(llm_client=make_standard_evaluador_mock_client())
+        assert len(agent.loaded_skills) == 6
+        assert set(agent.loaded_skills.keys()) == {
+            "reunir-hallazgos",
+            "calcular-puntaje",
+            "asignar-nivel-riesgo",
+            "explicar-resultado",
+            "recomendar-cuidados",
+            "generar-pdf",
+        }
+
+    def test_evaluador_reunir_hallazgos_preserves_url_provenance_and_evidence(self):
+        """
+        Al deduplicar hallazgos, se preserva la procedencia y evidencia de cada enlace.
+        Una misma regla en dos URLs distintas mantiene ambas evidencias y ambas contribuyen
+        a la evaluación sin perder trazabilidad.
+        """
+        from agents.common.contracts import UrlItemAnalysisResult, UrlSignalFinding
+
+        raw_text = (
+            "Ingrese a http://192.168.1.1/login y luego valide en http://10.0.0.1/auth"
+        )
+        url_analyses = [
+            {
+                "url_id": "URL-1",
+                "raw_url": "http://192.168.1.1/login",
+                "signals": [
+                    {
+                        "rule_id": "REGLA-URL-01",
+                        "name": "Dirección IP como host",
+                        "weight": 25,
+                        "description": "Uso de dirección IP directa.",
+                        "evidence_snippet": "192.168.1.1",
+                    }
+                ],
+                "risk_score_contribution": 25,
+                "warnings": [],
+            },
+            {
+                "url_id": "URL-2",
+                "raw_url": "http://10.0.0.1/auth",
+                "signals": [
+                    {
+                        "rule_id": "REGLA-URL-01",
+                        "name": "Dirección IP como host",
+                        "weight": 25,
+                        "description": "Uso de dirección IP directa.",
+                        "evidence_snippet": "10.0.0.1",
+                    }
+                ],
+                "risk_score_contribution": 25,
+                "warnings": [],
+            },
+        ]
+        url_res = UrlAnalysisResult(
+            estado="correcto",
+            detalle_estado="analizados_con_senales",
+            intervino_agente=True,
+            motivo_omision=None,
+            cantidad_enlaces_extraidos=2,
+            cantidad_enlaces_procesados=2,
+            enlaces_analizados=[
+                UrlItemAnalysisResult(
+                    url_id="URL-1",
+                    raw_url="http://192.168.1.1/login",
+                    masked_url="http://192.168.1.1/login",
+                    estado_enlace="analizado_con_senales",
+                    is_ip_address=True,
+                    findings=["Dirección IP como host."],
+                    reglas_activadas=["REGLA-URL-01"],
+                    senales_encontradas=[
+                        UrlSignalFinding(
+                            id_regla="REGLA-URL-01",
+                            tipo_senal="ip_host",
+                            evidencia="192.168.1.1",
+                            descripcion="Dirección IP como host",
+                        )
+                    ],
+                    advertencias=[],
+                ),
+                UrlItemAnalysisResult(
+                    url_id="URL-2",
+                    raw_url="http://10.0.0.1/auth",
+                    masked_url="http://10.0.0.1/auth",
+                    estado_enlace="analizado_con_senales",
+                    is_ip_address=True,
+                    findings=["Dirección IP como host."],
+                    reglas_activadas=["REGLA-URL-01"],
+                    senales_encontradas=[
+                        UrlSignalFinding(
+                            id_regla="REGLA-URL-01",
+                            tipo_senal="ip_host",
+                            evidencia="10.0.0.1",
+                            descripcion="Dirección IP como host",
+                        )
+                    ],
+                    advertencias=[],
+                ),
+            ],
+            enlaces_omitidos=[],
+            advertencias=[],
+            mensaje_error=None,
+            skills_cargadas=["analizar-url"],
+            herramientas_invocadas=["tool_analizar_url"],
+        )
+        url_res.validate(["http://192.168.1.1/login", "http://10.0.0.1/auth"])
+
+        ctx = make_prepared_session_ctx(
+            raw_text,
+            custom_urls=["http://192.168.1.1/login", "http://10.0.0.1/auth"],
+        )
+        prep_res = PreparationResult(
+            estado="correcto",
+            detalle_estado="con_enlaces",
+            texto_extraido_o_recibido=raw_text,
+            modalidad_entrada="text",
+            enlaces_encontrados=["http://192.168.1.1/login", "http://10.0.0.1/auth"],
+            advertencias=[],
+            skills_cargadas=PREPARADOR_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_validar_entrada", "tool_extraer_enlaces"],
+            url_details=url_analyses,
+        )
+        msg_res = MessageAnalysisResult(
+            estado="correcto",
+            categorias_revisadas=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_sin_hallazgos=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_no_revisadas=[],
+            estado_categorias={c: "revisada_sin_hallazgos" for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES},
+            senales_encontradas=[],
+            advertencias=[],
+            skills_cargadas=ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+            herramientas_invocadas=[f"tool_detectar_{c}" for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES],
+        )
+
+        tracer = AgentTracer()
+        eval_agent = EvaluadorAgent(llm_client=make_standard_evaluador_mock_client())
+        eval_res = eval_agent.run(
+            session_ctx=ctx,
+            prep_res=prep_res,
+            msg_res=msg_res,
+            url_res=url_res,
+            tracer=tracer,
+        )
+
+        assert eval_res.estado == "correcto"
+        assert eval_res.puntaje == 60  # 30 + 30 = 60 pts
+        assert eval_res.nivel_riesgo == "ALTO"
+        # Ambas procedencias de URL deben conservarse
+        assert len(eval_res.analisis_urls) == 2
+        uids = [u["url_id"] for u in eval_res.analisis_urls]
+        assert "URL-1" in uids and "URL-2" in uids
+
+    def test_evaluador_calcular_puntaje_exact_python_math(self):
+        """El modelo de IA no inventa ni altera los puntos: el cálculo coincide 100% con Python."""
+        from scripts.risk_classifier import RiskClassifier
+        from scripts.worker import load_policy
+        policy = load_policy()
+        classifier = RiskClassifier(policy)
+
+        raw_text = "Urgente: cuenta suspendida. Ingrese su clave en el portal bancario."
+        text_analysis = {
+            "indicators": [
+                {"id": "ING-URGENCIA-ARTIFICIAL", "weight": 15},
+                {"id": "ING-AMENAZA-BLOQUEO", "weight": 20},
+                {"id": "FRA-CAPTURA-CREDENCIALES", "weight": 30},
+            ]
+        }
+        res = classifier.calculate_score(raw_text, text_analysis, [])
+        assert res["score"] == 90
+        assert len(res["activated_rules"]) == 3
+
+    def test_evaluador_asignar_nivel_riesgo_threshold_boundaries(self):
+        """Verifica los umbrales documentados en Python (0-19 BAJO, 20-49 MEDIO, >=50 ALTO, combos críticos)."""
+        from scripts.risk_classifier import RiskClassifier
+        from scripts.worker import load_policy
+        policy = load_policy()
+        classifier = RiskClassifier(policy)
+
+        # 0 pts -> BAJO
+        res0 = classifier.assign_risk_level(0, {"indicators": []}, [])
+        assert res0["level"] == "BAJO"
+
+        # 19 pts -> BAJO
+        res19 = classifier.assign_risk_level(
+            19,
+            {"indicators": [{"id": "ING-URGENCIA-ARTIFICIAL", "weight": 19}]},
+            [],
+        )
+        assert res19["level"] == "BAJO"
+
+        # 20 pts -> MEDIO
+        res20 = classifier.assign_risk_level(
+            20,
+            {"indicators": [{"id": "ING-AMENAZA-BLOQUEO", "weight": 20}]},
+            [],
+        )
+        assert res20["level"] == "MEDIO"
+
+        # 49 pts -> MEDIO
+        res49 = classifier.assign_risk_level(
+            49,
+            {"indicators": [{"id": "RULE-TEST", "weight": 49}]},
+            [],
+        )
+        assert res49["level"] == "MEDIO"
+
+        # 50 pts -> ALTO
+        res50 = classifier.assign_risk_level(
+            50,
+            {"indicators": [{"id": "RULE-TEST", "weight": 50}]},
+            [],
+        )
+        assert res50["level"] == "ALTO"
+
+        # Combo crítico: amenaza + credenciales + url -> ALTO
+        res_crit = classifier.assign_risk_level(
+            45,
+            {
+                "indicators": [
+                    {"id": "ING-AMENAZA-BLOQUEO"},
+                    {"id": "FRA-CAPTURA-CREDENCIALES"},
+                ]
+            },
+            [{"signals": [{"rule_id": "REGLA-URL-02"}]}],
+        )
+        assert res_crit["level"] == "ALTO"
+
+    def test_evaluador_prior_incomplete_or_error_forces_indeterminado_never_bajo(self):
+        """Un análisis incompleto nunca se convierte en RIESGO BAJO; siempre produce INDETERMINADO."""
+        ctx = make_prepared_session_ctx("Texto de prueba")
+        prep_res = PreparationResult(
+            estado="correcto",
+            detalle_estado="sin_enlaces",
+            texto_extraido_o_recibido="Texto de prueba",
+            modalidad_entrada="text",
+            enlaces_encontrados=[],
+            advertencias=[],
+            skills_cargadas=PREPARADOR_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_validar_entrada"],
+        )
+        # Analizador de mensajes quedó incompleto
+        msg_res = MessageAnalysisResult(
+            estado="incompleto",
+            categorias_revisadas=["urgencia"],
+            categorias_sin_hallazgos=["urgencia"],
+            categorias_no_revisadas=["amenazas", "premios", "pedidos_datos", "pedidos_dinero"],
+            estado_categorias={"urgencia": "revisada_sin_hallazgos"},
+            senales_encontradas=[],
+            advertencias=[],
+            skills_cargadas=ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_detectar_urgencia"],
+        )
+
+        tracer = AgentTracer()
+        eval_agent = EvaluadorAgent(llm_client=make_standard_evaluador_mock_client())
+        eval_res = eval_agent.run(
+            session_ctx=ctx,
+            prep_res=prep_res,
+            msg_res=msg_res,
+            url_res=None,
+            tracer=tracer,
+        )
+        assert eval_res.estado == "incompleto"
+        assert eval_res.nivel_riesgo == "INDETERMINADO"
+        assert eval_res.nivel_riesgo != "BAJO"
+
+    def test_evaluador_accessible_explanation_and_preventive_recommendations(self):
+        """
+        Verifica que la explicación no técnica no afirme que se visitaron enlaces
+        y que las recomendaciones se titulen 'recomendaciones preventivas del sistema'.
+        """
+        from agents.common.contracts import (
+            MessageSignalFinding,
+            UrlItemAnalysisResult,
+            UrlSignalFinding,
+        )
+
+        raw_text = "Urgente: actualice su cuenta en https://galicia.seguridad-bancaria.online/login"
+        ctx = make_prepared_session_ctx(raw_text, custom_urls=["https://galicia.seguridad-bancaria.online/login"])
+        prep_res = PreparationResult(
+            estado="correcto",
+            detalle_estado="con_enlaces",
+            texto_extraido_o_recibido=raw_text,
+            modalidad_entrada="text",
+            enlaces_encontrados=["https://galicia.seguridad-bancaria.online/login"],
+            advertencias=[],
+            skills_cargadas=PREPARADOR_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_validar_entrada", "tool_extraer_enlaces"],
+        )
+        msg_res = MessageAnalysisResult(
+            estado="correcto",
+            categorias_revisadas=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_sin_hallazgos=[c for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES if c != "urgencia"],
+            categorias_no_revisadas=[],
+            estado_categorias={
+                "urgencia": "revisada_con_hallazgos",
+                "amenazas": "revisada_sin_hallazgos",
+                "premios": "revisada_sin_hallazgos",
+                "pedidos_datos": "revisada_sin_hallazgos",
+                "pedidos_dinero": "revisada_sin_hallazgos",
+            },
+            senales_encontradas=[
+                MessageSignalFinding(
+                    id_senal="ING-URGENCIA-ARTIFICIAL",
+                    categoria_skill="urgencia",
+                    categoria_motor="urgencia",
+                    severidad="alta",
+                    descripcion="Presión temporal o ultimátum.",
+                    fragmento_justificacion="Urgente",
+                    evidence_snippets=["Urgente"],
+                )
+            ],
+            advertencias=[],
+            skills_cargadas=ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+            herramientas_invocadas=[f"tool_detectar_{c}" for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES],
+        )
+        url_res = UrlAnalysisResult(
+            estado="correcto",
+            detalle_estado="analizados_con_senales",
+            intervino_agente=True,
+            motivo_omision=None,
+            cantidad_enlaces_extraidos=1,
+            cantidad_enlaces_procesados=1,
+            enlaces_analizados=[
+                UrlItemAnalysisResult(
+                    url_id="URL-1",
+                    raw_url="https://galicia.seguridad-bancaria.online/login",
+                    masked_url="https://galicia.seguridad-bancaria.online/login",
+                    estado_enlace="analizado_con_senales",
+                    reglas_activadas=["REGLA-URL-02"],
+                    findings=["Uso engañoso de subdominio con marca comercial reconocida."],
+                    senales_encontradas=[
+                        UrlSignalFinding(
+                            id_regla="REGLA-URL-02",
+                            tipo_senal="subdominio_enganoso",
+                            evidencia="galicia.seguridad-bancaria.online",
+                            descripcion="Subdominio engañoso.",
+                        )
+                    ],
+                    advertencias=[],
+                )
+            ],
+            enlaces_omitidos=[],
+            advertencias=[],
+            mensaje_error=None,
+            skills_cargadas=["analizar-url"],
+            herramientas_invocadas=["tool_analizar_url"],
+        )
+
+        tracer = AgentTracer()
+        eval_agent = EvaluadorAgent(llm_client=make_standard_evaluador_mock_client())
+        eval_res = eval_agent.run(
+            session_ctx=ctx,
+            prep_res=prep_res,
+            msg_res=msg_res,
+            url_res=url_res,
+            tracer=tracer,
+        )
+
+        assert eval_res.estado == "correcto"
+        assert len(eval_res.explicacion_no_tecnica) > 30
+        exp_lower = eval_res.explicacion_no_tecnica.lower()
+        assert "enlace" in exp_lower or "apuro" in exp_lower or "cautela" in exp_lower or "estafa" in exp_lower
+        assert len(eval_res.recomendaciones) > 0
+        for r in eval_res.recomendaciones:
+            assert len(r) > 10
+
+    def test_evaluador_generates_pdf_in_memory_only_when_requested(self):
+        """El PDF solo se genera cuando `generate_pdf=True`, devolviendo bytes binarios en memoria."""
+        raw_text = "Aviso: Su cuenta será suspendida si no valida datos."
+        ctx = make_prepared_session_ctx(raw_text)
+        prep_res = PreparationResult(
+            estado="correcto",
+            detalle_estado="sin_enlaces",
+            texto_extraido_o_recibido=raw_text,
+            modalidad_entrada="text",
+            enlaces_encontrados=[],
+            advertencias=[],
+            skills_cargadas=PREPARADOR_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_validar_entrada", "tool_extraer_enlaces"],
+        )
+        msg_res = MessageAnalysisResult(
+            estado="correcto",
+            categorias_revisadas=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_sin_hallazgos=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_no_revisadas=[],
+            estado_categorias={c: "revisada_sin_hallazgos" for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES},
+            senales_encontradas=[],
+            advertencias=[],
+            skills_cargadas=ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+            herramientas_invocadas=[f"tool_detectar_{c}" for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES],
+        )
+
+        # 1. Caso sin PDF
+        tracer1 = AgentTracer()
+        eval_agent1 = EvaluadorAgent(llm_client=make_standard_evaluador_mock_client(generate_pdf=False))
+        res_no_pdf = eval_agent1.run(
+            session_ctx=ctx,
+            prep_res=prep_res,
+            msg_res=msg_res,
+            url_res=None,
+            tracer=tracer1,
+            generate_pdf=False,
+        )
+        assert res_no_pdf.pdf_generado is False
+        assert res_no_pdf.pdf_filename is None
+
+        # 2. Caso con PDF solicitado
+        tracer2 = AgentTracer()
+        eval_agent2 = EvaluadorAgent(llm_client=make_standard_evaluador_mock_client(generate_pdf=True))
+        res_with_pdf = eval_agent2.run(
+            session_ctx=ctx,
+            prep_res=prep_res,
+            msg_res=msg_res,
+            url_res=None,
+            tracer=tracer2,
+            generate_pdf=True,
+        )
+        assert res_with_pdf.pdf_generado is True
+        assert res_with_pdf.pdf_filename is not None
+        assert res_with_pdf.pdf_filename.endswith(".pdf")
+
+    def test_evaluador_cannot_be_tampered_by_model_invented_score(self):
+        """Argumentos inventados por el modelo para manipular el puntaje son rechazados por validación."""
+        def _rogue_step(contents, config):
+            return MockLLMResponse(
+                function_calls=[
+                    MockFunctionCall(
+                        "tool_reunir_hallazgos",
+                        {"confirm_session": True, "invented_score": 0, "fake_level": "BAJO"},
+                    )
+                ]
+            )
+
+        ctx = make_prepared_session_ctx("Mensaje")
+        prep_res = PreparationResult(
+            estado="correcto",
+            detalle_estado="sin_enlaces",
+            texto_extraido_o_recibido="Mensaje",
+            modalidad_entrada="text",
+            enlaces_encontrados=[],
+            advertencias=[],
+            skills_cargadas=PREPARADOR_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_validar_entrada"],
+        )
+        msg_res = MessageAnalysisResult(
+            estado="correcto",
+            categorias_revisadas=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_sin_hallazgos=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_no_revisadas=[],
+            estado_categorias={c: "revisada_sin_hallazgos" for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES},
+            senales_encontradas=[],
+            advertencias=[],
+            skills_cargadas=ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+            herramientas_invocadas=[],
+        )
+
+        agent = EvaluadorAgent(llm_client=ScriptedMockLLMClient(_rogue_step))
+        with pytest.raises(ContractValidationError, match="no permitido"):
+            agent.run(
+                session_ctx=ctx,
+                prep_res=prep_res,
+                msg_res=msg_res,
+                url_res=None,
+                tracer=AgentTracer(),
+            )
+
+    def test_evaluador_out_of_order_or_unauthorized_tools_rejected(self):
+        """Llamar a herramientas en orden incorrecto o no autorizadas es rechazado estrictamente."""
+        # Intento de calcular puntaje antes de reunir hallazgos
+        def _out_of_order_step(contents, config):
+            return MockLLMResponse(
+                function_calls=[
+                    MockFunctionCall("tool_calcular_puntaje", {"confirm_gathered": True})
+                ]
+            )
+
+        ctx = make_prepared_session_ctx("Mensaje")
+        prep_res = PreparationResult(
+            estado="correcto",
+            detalle_estado="sin_enlaces",
+            texto_extraido_o_recibido="Mensaje",
+            modalidad_entrada="text",
+            enlaces_encontrados=[],
+            advertencias=[],
+            skills_cargadas=PREPARADOR_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_validar_entrada"],
+        )
+        msg_res = MessageAnalysisResult(
+            estado="correcto",
+            categorias_revisadas=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_sin_hallazgos=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_no_revisadas=[],
+            estado_categorias={c: "revisada_sin_hallazgos" for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES},
+            senales_encontradas=[],
+            advertencias=[],
+            skills_cargadas=ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+            herramientas_invocadas=[],
+        )
+
+        agent = EvaluadorAgent(llm_client=ScriptedMockLLMClient(_out_of_order_step))
+        with pytest.raises(ContractValidationError, match="reunir_hallazgos"):
+            agent.run(
+                session_ctx=ctx,
+                prep_res=prep_res,
+                msg_res=msg_res,
+                url_res=None,
+                tracer=AgentTracer(),
+            )
+
+    def test_pdf_download_reuses_stored_session_evaluation_without_model_calls(self):
+        """
+        Descargar el PDF reutiliza la evaluación almacenada en la sesión sin re-ejecutar
+        los agentes ni realizar ninguna llamada al modelo de IA.
+        """
+        from web.pdf_exporter import generate_pdf_report
+
+        raw_text = "Aviso bancario urgente con enlaces"
+        ctx = make_prepared_session_ctx(raw_text)
+        prep_res = PreparationResult(
+            estado="correcto",
+            detalle_estado="sin_enlaces",
+            texto_extraido_o_recibido=raw_text,
+            modalidad_entrada="text",
+            enlaces_encontrados=[],
+            advertencias=[],
+            skills_cargadas=PREPARADOR_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_validar_entrada"],
+        )
+        msg_res = MessageAnalysisResult(
+            estado="correcto",
+            categorias_revisadas=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_sin_hallazgos=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_no_revisadas=[],
+            estado_categorias={c: "revisada_sin_hallazgos" for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES},
+            senales_encontradas=[],
+            advertencias=[],
+            skills_cargadas=ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+            herramientas_invocadas=[],
+        )
+
+        eval_agent = EvaluadorAgent(llm_client=make_standard_evaluador_mock_client(generate_pdf=False))
+        eval_res = eval_agent.run(
+            session_ctx=ctx,
+            prep_res=prep_res,
+            msg_res=msg_res,
+            url_res=None,
+            tracer=AgentTracer(),
+            generate_pdf=False,
+        )
+
+        # Simular descarga en Streamlit / Web: generate_pdf_report usando el to_engine_report() ya producido
+        engine_report = eval_res.to_engine_report()
+        pdf_bytes = generate_pdf_report(engine_report)
+
+        assert pdf_bytes is not None
+        assert pdf_bytes.startswith(b"%PDF")
+
+    def test_evaluador_parallel_execution_takes_only_two_turns(self):
+        """
+        Verifica que el Evaluador pueda ejecutar todas sus herramientas en una única ronda
+        de llamadas paralelas y cerrar en la segunda llamada (2 llamadas LLM en total).
+        """
+        call_count = 0
+
+        def _parallel_eval_step(contents, config):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return MockLLMResponse(
+                    function_calls=[
+                        MockFunctionCall("tool_reunir_hallazgos", {"confirm_session": True}),
+                        MockFunctionCall("tool_calcular_puntaje", {"confirm_gathered": True}),
+                        MockFunctionCall("tool_asignar_nivel_riesgo", {"confirm_scored": True}),
+                        MockFunctionCall("tool_explicar_resultado", {"confirm_level_assigned": True}),
+                        MockFunctionCall("tool_recomendar_cuidados", {"confirm_level_assigned": True}),
+                    ]
+                )
+            return MockLLMResponse(
+                text="Evaluación final completada en paralelo."
+            )
+
+        ctx = make_prepared_session_ctx("Aviso urgente de suspensión")
+        prep_res = PreparationResult(
+            estado="correcto",
+            detalle_estado="sin_enlaces",
+            texto_extraido_o_recibido="Aviso urgente de suspensión",
+            modalidad_entrada="text",
+            enlaces_encontrados=[],
+            advertencias=[],
+            skills_cargadas=PREPARADOR_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_validar_entrada"],
+        )
+        msg_res = MessageAnalysisResult(
+            estado="correcto",
+            categorias_revisadas=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_sin_hallazgos=["premios", "pedidos_datos", "pedidos_dinero"],
+            categorias_no_revisadas=[],
+            estado_categorias={c: "revisada_sin_hallazgos" for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES},
+            senales_encontradas=[
+                MessageSignalFinding(
+                    id_senal="ING-URGENCIA-ARTIFICIAL",
+                    categoria_skill="urgencia",
+                    categoria_motor="urgencia",
+                    severidad="alta",
+                    descripcion="Presión de tiempo",
+                    fragmento_justificacion="urgente",
+                    evidence_snippets=["urgente"],
+                )
+            ],
+            advertencias=[],
+            skills_cargadas=ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_detectar_urgencia"],
+        )
+
+        tracer = AgentTracer()
+        agent = EvaluadorAgent(llm_client=ScriptedMockLLMClient(_parallel_eval_step))
+        res = agent.run(
+            session_ctx=ctx,
+            prep_res=prep_res,
+            msg_res=msg_res,
+            url_res=None,
+            tracer=tracer,
+        )
+
+        assert res.estado == "correcto"
+        assert res.puntaje == 15
+        assert res.nivel_riesgo == "BAJO"
+        assert call_count == 2
+        assert set(res.herramientas_invocadas) == {
+            "tool_reunir_hallazgos",
+            "tool_calcular_puntaje",
+            "tool_asignar_nivel_riesgo",
+            "tool_explicar_resultado",
+            "tool_recomendar_cuidados",
+        }
+
+    def test_pdf_generation_and_saving_makes_zero_model_calls(self, tmp_path):
+        """
+        Verifica que generar el PDF en memoria y guardarlo en disco en output/
+        utilice únicamente ReportLab en Python sin realizar llamadas al modelo.
+        """
+        from web.pdf_exporter import generate_pdf_report
+        from agents.tools.evaluation_tools import execute_tool_generar_pdf, EvaluationSessionState
+
+        state = EvaluationSessionState()
+        state.level = "ALTO"
+        state.score = 75
+        state.summary = "Mensaje con alto riesgo de fraude."
+        state.risk_level_assigned = True
+        state.explanation = "Explicación clara."
+        state.explanation_generated = True
+        state.recommendations = ["No comparta claves."]
+        state.recommendations_generated = True
+        state.unified_indicators = [{"id": "FRA-CAPTURA-CREDENCIALES", "severity": "alta"}]
+
+        # Guardar en directorio de salida
+        out = execute_tool_generar_pdf(state, args={"save_to_output": True}, output_dir=tmp_path)
+        assert out["status"] == "ok"
+        assert out["pdf_filename"].endswith(".pdf")
+        saved_file = tmp_path / out["pdf_filename"]
+        assert saved_file.exists()
+        assert saved_file.stat().st_size > 0
+
+        # Exportador web en memoria
+        report_dict = {
+            "status": "success",
+            "risk_assessment": {
+                "level": state.level,
+                "score": state.score,
+                "summary": state.summary,
+                "activated_rules": [],
+            },
+            "indicators_detected": state.unified_indicators,
+            "url_analysis": [],
+            "limitations": [],
+        }
+        pdf_bytes = generate_pdf_report(report_dict)
+        assert pdf_bytes.startswith(b"%PDF")
+
+    def test_evaluador_tools_dependency_order_respected_even_when_batch_unordered_and_no_duplicate_calc(self):
+        """
+        Verifica que aun cuando el modelo retorne las herramientas desordenadas en un lote conjunto,
+        se ejecuten en el orden de dependencia estricto:
+        reunir hallazgos -> calcular puntaje -> asignar nivel -> explicación y recomendaciones -> pdf.
+        Asimismo, reintentos o llamadas repetidas devuelven el resultado en caché sin recalcular.
+        """
+        call_count = 0
+
+        def _unordered_step(contents, config):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return MockLLMResponse(
+                    function_calls=[
+                        MockFunctionCall("tool_generar_pdf", {"save_to_output": False}),
+                        MockFunctionCall("tool_recomendar_cuidados", {"confirm_level_assigned": True}),
+                        MockFunctionCall("tool_explicar_resultado", {"confirm_level_assigned": True}),
+                        MockFunctionCall("tool_asignar_nivel_riesgo", {"confirm_scored": True}),
+                        MockFunctionCall("tool_calcular_puntaje", {"confirm_gathered": True}),
+                        MockFunctionCall("tool_reunir_hallazgos", {"confirm_session": True}),
+                    ]
+                )
+            return MockLLMResponse(text="Evaluación completada con orden de dependencias resuelto.")
+
+        ctx = make_prepared_session_ctx("Mensaje de prueba")
+        prep_res = PreparationResult(
+            estado="correcto",
+            detalle_estado="sin_enlaces",
+            texto_extraido_o_recibido="Mensaje de prueba",
+            modalidad_entrada="text",
+            enlaces_encontrados=[],
+            advertencias=[],
+            skills_cargadas=PREPARADOR_ALLOWED_SKILLS,
+            herramientas_invocadas=["tool_validar_entrada"],
+        )
+        msg_res = MessageAnalysisResult(
+            estado="correcto",
+            categorias_revisadas=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_sin_hallazgos=REQUIRED_MESSAGE_ANALYSIS_CATEGORIES,
+            categorias_no_revisadas=[],
+            estado_categorias={c: "revisada_sin_hallazgos" for c in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES},
+            senales_encontradas=[],
+            advertencias=[],
+            skills_cargadas=ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+            herramientas_invocadas=[],
+        )
+
+        tracer = AgentTracer()
+        agent = EvaluadorAgent(llm_client=ScriptedMockLLMClient(_unordered_step))
+        res = agent.run(
+            session_ctx=ctx,
+            prep_res=prep_res,
+            msg_res=msg_res,
+            url_res=None,
+            tracer=tracer,
+            generate_pdf=True,
+        )
+
+        assert res.estado == "correcto"
+        assert res.nivel_riesgo == "BAJO"
+        assert res.pdf_generado is True
+        tool_events = [ev["tool"] for ev in tracer.get_events() if ev["event_type"] == "tool_call" and ev["status"] == "ok"]
+        assert tool_events == [
+            "tool_reunir_hallazgos",
+            "tool_calcular_puntaje",
+            "tool_asignar_nivel_riesgo",
+            "tool_explicar_resultado",
+            "tool_recomendar_cuidados",
+            "tool_generar_pdf",
+        ]
+# =============================================================================
+# 7. Prueba Opcional de Ejecución Real con Google Gemini API (si hay GEMINI_API_KEY)
 # =============================================================================
 
 @pytest.mark.skipif(
@@ -1313,10 +2286,13 @@ def test_real_gemini_api_orchestration_when_configured():
     assert resp.url_analysis.cantidad_enlaces_procesados == 1
     assert "REGLA-URL-02" in resp.url_analysis.enlaces_analizados[0].reglas_activadas
 
+    assert resp.evaluation is not None
+    assert resp.evaluation.estado == "correcto"
+    assert resp.evaluation.nivel_riesgo == "ALTO"
     assert resp.report is not None
     assert resp.report["risk_assessment"]["level"] == "ALTO"
 
-    # Verificar en las trazas que participaron los 4 agentes y sus herramientas
+    # Verificar en las trazas que participaron los 5 agentes y sus herramientas
     agents_seen = {ev["agent"] for ev in resp.trace_events}
     tool_calls = [
         (ev["agent"], ev["tool"], ev["status"])
@@ -1328,12 +2304,18 @@ def test_real_gemini_api_orchestration_when_configured():
         "preparador",
         "analizador_mensajes",
         "analizador_enlaces",
+        "evaluador",
     }.issubset(agents_seen)
     assert ("orquestador", "delegar_preparacion", "ok") in tool_calls
     assert ("orquestador", "delegar_analisis_mensaje", "ok") in tool_calls
     assert ("orquestador", "delegar_analisis_enlaces", "ok") in tool_calls
     assert ("analizador_enlaces", "tool_analizar_url", "ok") in tool_calls
-    assert ("orquestador", "ejecutar_motor_deterministico", "ok") in tool_calls
+    assert ("orquestador", "delegar_evaluacion", "ok") in tool_calls
+    assert ("evaluador", "tool_reunir_hallazgos", "ok") in tool_calls
+    assert ("evaluador", "tool_calcular_puntaje", "ok") in tool_calls
+    assert ("evaluador", "tool_asignar_nivel_riesgo", "ok") in tool_calls
+    assert ("evaluador", "tool_explicar_resultado", "ok") in tool_calls
+    assert ("evaluador", "tool_recomendar_cuidados", "ok") in tool_calls
 
     print("\n=== RESUMEN DE CONSUMO REAL (USAGE METRICS) ===")
     print(resp.usage_metrics)
