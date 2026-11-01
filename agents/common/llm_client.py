@@ -10,6 +10,11 @@ Implementa:
   * Límite de tamaño de respuesta (`max_output_tokens`).
   * Lista blanca cerrada de herramientas permitidas para cada agente.
   * Prohibición de interpretar texto libre como comandos ejecutables.
+- Gestión rigurosa de límites de tasa (429 / RESOURCE_EXHAUSTED):
+  * Detección del tiempo sugerido de espera por la API.
+  * Reintento único condicionado estrictamente al presupuesto global restante.
+  * Prohibición de reintentos rápidos o ilimitados.
+  * Distinción entre límite temporal por minuto y cuota agotada permanente.
 - Soporte para inyección de cliente simulado (`llm_client`) en pruebas automatizadas sin consumo de API.
 """
 
@@ -17,6 +22,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import time
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -32,31 +38,30 @@ except ImportError:
     genai_types = None  # type: ignore
     GOOGLE_GENAI_AVAILABLE = False
 
-
-DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
-MAX_TOOL_CALLS_DEFAULT = 5
-MAX_ELAPSED_SECONDS_DEFAULT = 25.0
-MAX_OUTPUT_TOKENS_DEFAULT = 1024
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_GEMINI_MODEL: str = "gemini-3.5-flash-lite"
+MAX_TOOL_CALLS_DEFAULT: int = 12
+MAX_OUTPUT_TOKENS_DEFAULT: int = 1024
+MAX_ELAPSED_SECONDS_DEFAULT: float = 60.0
 
 
 def load_local_env_file(env_path: Optional[Path] = None, override: bool = False) -> bool:
     """
-    Carga de forma segura las variables definidas en el archivo `.env` de la raíz del proyecto
-    en `os.environ` para ejecuciones locales, sin requerir dependencias externas ni sobrescribir
-    variables ya definidas en el entorno (salvo que `override=True`).
-    Nunca imprime ni registra los valores leídos.
+    Carga de forma segura variables de entorno desde un archivo `.env` local en la raíz del proyecto.
+    Si DETECTIVE_SKIP_DOTENV=1 está presente en os.environ, omite la lectura (útil para Docker).
     """
-    if not override and os.environ.get("DETECTIVE_SKIP_DOTENV") == "1":
+    if os.environ.get("DETECTIVE_SKIP_DOTENV") == "1":
         return False
 
-    target_path = env_path if env_path is not None else (PROJECT_ROOT / ".env")
-    if not target_path.is_file():
+    target = env_path
+    if target is None:
+        target = Path(__file__).resolve().parent.parent.parent / ".env"
+
+    if not target.is_file():
         return False
 
     loaded_any = False
     try:
-        raw_content = target_path.read_text(encoding="utf-8")
+        raw_content = target.read_text(encoding="utf-8")
         for raw_line in raw_content.splitlines():
             line = raw_line.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -70,7 +75,6 @@ def load_local_env_file(env_path: Optional[Path] = None, override: bool = False)
                 val = val[1:-1].strip()
             if not key:
                 continue
-            # Si la variable no existe en os.environ (o está vacía y el archivo provee un valor), la asignamos
             if override or key not in os.environ or (not os.environ.get(key, "").strip() and val):
                 os.environ[key] = val
                 loaded_any = True
@@ -88,6 +92,90 @@ class AgentConfigurationError(RuntimeError):
 class AgentExecutionError(RuntimeError):
     """Fallo de API externa, timeout o exceso en el límite de llamadas a herramientas."""
     pass
+
+
+def parse_api_rate_limit_and_error(call_exc: Exception) -> Dict[str, Any]:
+    """
+    Analiza una excepción de llamada a la API para distinguir:
+    - 429 temporal (límite de tasa por minuto / RPM) con o sin tiempo sugerido de espera.
+    - 429 permanente (cuota diaria agotada).
+    - Errores de red transitorios (503, 504, deadline, unavailable).
+    - Otros errores no reintentables.
+    """
+    exc_str = str(call_exc)
+    is_429 = "429" in exc_str or "RESOURCE_EXHAUSTED" in exc_str
+    is_network = any(code in exc_str for code in ["504", "503", "DEADLINE_EXCEEDED", "UNAVAILABLE"])
+
+    retry_match = re.search(
+        r"(?:retry|wait|try again)\s+(?:in|after)\s+([0-9]+(?:\.[0-9]+)?)\s*s?",
+        exc_str,
+        re.IGNORECASE,
+    )
+    suggested_delay: Optional[float] = None
+    if retry_match:
+        try:
+            suggested_delay = float(retry_match.group(1))
+        except (ValueError, TypeError):
+            suggested_delay = None
+
+    lowered = exc_str.lower()
+    is_permanent_quota = is_429 and any(
+        kw in lowered for kw in [
+            "per day",
+            "perday",
+            "daily limit",
+            "daily",
+            "requestsperday",
+            "free_tier_requests_per_day",
+            "quota_exceeded_day",
+            "quota has been exhausted for the day",
+        ]
+    )
+    is_temporal_rate_limit = is_429 and not is_permanent_quota
+
+    return {
+        "is_429": is_429,
+        "is_temporal_rate_limit": is_temporal_rate_limit,
+        "is_permanent_quota": is_permanent_quota,
+        "is_network": is_network,
+        "suggested_delay": suggested_delay,
+        "raw_message": exc_str,
+    }
+
+
+def format_user_friendly_agent_error(err: Exception) -> str:
+    """
+    Transforma excepciones técnicas de la API en mensajes breves y comprensibles para el usuario,
+    sin exponer volcados de trazas ni identificadores internos de proyecto.
+    """
+    msg = str(err)
+    if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "Límite temporal" in msg or "límite de solicitudes" in msg:
+        if "supera el presupuesto" in msg or "Por favor aguardá" in msg:
+            return msg
+        return (
+            "Se alcanzó el límite de solicitudes por minuto de la API de IA (15 req/min en nivel gratuito). "
+            "Por favor aguardá aproximadamente 30 segundos antes de realizar una nueva consulta o utilizá el Modo Local Determinístico (Sin Red)."
+        )
+    if "cuota de la API de IA" in msg or "límite diario" in msg:
+        return (
+            "La cuota de la API de IA en el proveedor externo se encuentra agotada (límite diario alcanzado). "
+            "Podés consultar tu cuota en Google AI Studio o utilizar el Modo Local Determinístico (Sin Red)."
+        )
+    if "504" in msg or "DEADLINE_EXCEEDED" in msg or "tiempo máximo" in msg.lower():
+        return (
+            "El servicio de IA demoró más de lo esperado en responder (tiempo límite excedido). "
+            "Por favor verificá tu conexión o intentá nuevamente con el Modo Local Determinístico."
+        )
+    if "GEMINI_API_KEY" in msg:
+        return (
+            "No se encontró una clave GEMINI_API_KEY válida configurada. "
+            "Configurá tu clave en el archivo .env o utilizá el Modo Local Determinístico."
+        )
+
+    clean = re.sub(r"project_number:\s*\d+", "[PROYECTO]", msg)
+    clean = re.sub(r"https?://\S+", "", clean)
+    clean = clean.split("\n")[0].strip()
+    return f"Ocurrió un error en el servicio de IA: {clean[:160]}"
 
 
 def get_agent_runtime_status() -> Dict[str, Any]:
@@ -160,7 +248,6 @@ def run_agent_tool_loop(
     start_wall = time.monotonic()
     tool_calls_count = 0
 
-    # Si estamos usando el cliente real de google-genai, construimos los objetos types.*
     use_genai_types = GOOGLE_GENAI_AVAILABLE and not hasattr(client, "is_mock_client")
 
     if use_genai_types:
@@ -186,7 +273,6 @@ def run_agent_tool_loop(
             )
         ]
     else:
-        # Estructura neutral para clientes simulados en tests unitarios
         config = {
             "system_instruction": system_instruction,
             "tools": tool_declarations,
@@ -218,8 +304,6 @@ def run_agent_tool_loop(
 
         llm_t0 = time.monotonic()
         try:
-            # Reintento único ante fallos transitorios de red / deadline de la API (503/504)
-            # verificando en todo momento que reste tiempo en el presupuesto
             response = None
             last_transient_exc: Optional[Exception] = None
             for attempt in range(2):
@@ -245,30 +329,94 @@ def run_agent_tool_loop(
                     )
                     break
                 except Exception as call_exc:
-                    exc_str = str(call_exc)
-                    is_transient = (
-                        "504" in exc_str
-                        or "503" in exc_str
-                        or "DEADLINE_EXCEEDED" in exc_str
-                        or "UNAVAILABLE" in exc_str
-                    )
-                    if is_transient and attempt == 0:
-                        last_transient_exc = call_exc
-                        rem_for_retry = max_elapsed_seconds - (time.monotonic() - start_wall)
-                        if rem_for_retry <= 1.5:
+                    err_info = parse_api_rate_limit_and_error(call_exc)
+                    rem_for_retry = max_elapsed_seconds - (time.monotonic() - start_wall)
+
+                    # 1. Cuota permanente agotada
+                    if err_info["is_permanent_quota"]:
+                        tracer.record(
+                            agent=agent_name,
+                            event_type="agent_error",
+                            tool="llm_api",
+                            status="error",
+                            detail="Cuota de API agotada permanentemente (límite diario). Reintento cancelado.",
+                            duration_ms=(time.monotonic() - start_wall) * 1000,
+                        )
+                        raise AgentExecutionError(
+                            "Cuota diaria de consultas a la API de IA agotada en el proveedor externo (límite diario alcanzado). "
+                            "Por favor verificá tu plan en Google AI Studio o utilizá el Modo Local Determinístico (Sin Red)."
+                        ) from call_exc
+
+                    # 2. Límite temporal de tasa (429 / RESOURCE_EXHAUSTED con tiempo sugerido o RPM)
+                    if err_info["is_temporal_rate_limit"]:
+                        suggested = err_info["suggested_delay"]
+                        wait_seconds = (suggested if suggested is not None else 20.0) + 1.0
+
+                        if attempt == 0:
+                            if wait_seconds + 1.5 <= rem_for_retry:
+                                tracer.record(
+                                    agent=agent_name,
+                                    event_type="agent_retry",
+                                    tool="llm_api",
+                                    status="warning",
+                                    detail=(
+                                        f"Límite temporal 429 detectado. Esperando {wait_seconds:.1f}s sugeridos por el proveedor "
+                                        f"dentro del presupuesto restante ({rem_for_retry:.1f}s)..."
+                                    ),
+                                    duration_ms=(time.monotonic() - start_wall) * 1000,
+                                )
+                                time.sleep(wait_seconds)
+                                continue
+                            else:
+                                tracer.record(
+                                    agent=agent_name,
+                                    event_type="agent_error",
+                                    tool="llm_api",
+                                    status="error",
+                                    detail=(
+                                        f"Límite temporal 429. El tiempo de espera requerido ({wait_seconds:.1f}s) "
+                                        f"supera el presupuesto restante ({rem_for_retry:.1f}s). Reintento cancelado."
+                                    ),
+                                    duration_ms=(time.monotonic() - start_wall) * 1000,
+                                )
+                                wait_disp = int(suggested) if suggested is not None else int(wait_seconds)
+                                raise AgentExecutionError(
+                                    f"Se alcanzó el límite de solicitudes por minuto de la API de IA (15 req/min). "
+                                    f"El tiempo de espera sugerido ({wait_disp}s) supera el presupuesto restante ({rem_for_retry:.1f}s). "
+                                    "Por favor aguardá unos segundos antes de intentar nuevamente o utilizá el Modo Local Determinístico."
+                                ) from call_exc
+                        else:
+                            raise AgentExecutionError(
+                                "Límite temporal de consultas a la API de IA persistió tras reintento con espera. "
+                                "Por favor aguardá unos segundos antes de realizar una nueva consulta o utilizá el Modo Local Determinístico."
+                            ) from call_exc
+
+                    # 3. Fallo transitorio de red (503 / 504 / UNAVAILABLE / DEADLINE_EXCEEDED)
+                    if err_info["is_network"] and attempt == 0:
+                        if rem_for_retry > 2.0:
+                            tracer.record(
+                                agent=agent_name,
+                                event_type="agent_retry",
+                                tool="llm_api",
+                                status="warning",
+                                detail=f"Fallo transitorio de red. Reintentando en 1.5s...",
+                                duration_ms=(time.monotonic() - start_wall) * 1000,
+                            )
+                            time.sleep(1.5)
+                            continue
+                        else:
                             tracer.record(
                                 agent=agent_name,
                                 event_type="agent_error",
-                                tool="none",
+                                tool="llm_api",
                                 status="error",
-                                detail=f"Tiempo insuficiente para reintento ({rem_for_retry:.2f}s <= 1.5s). Se cancela reintento.",
+                                detail=f"Tiempo insuficiente ({rem_for_retry:.1f}s <= 2.0s) para reintentar tras fallo de red.",
                                 duration_ms=(time.monotonic() - start_wall) * 1000,
                             )
                             raise AgentExecutionError(
-                                f"Tiempo insuficiente ({rem_for_retry:.2f}s) para reintentar llamada tras fallo transitorio en '{agent_name}'."
+                                f"Tiempo insuficiente ({rem_for_retry:.1f}s) para reintentar llamada tras fallo transitorio en '{agent_name}'."
                             ) from call_exc
-                        time.sleep(1.5)
-                        continue
+
                     raise
 
             if response is None and last_transient_exc:
@@ -305,7 +453,6 @@ def run_agent_tool_loop(
         except (AgentConfigurationError, AgentExecutionError, ContractValidationError):
             raise
         except Exception as api_exc:
-            # Sanitizar cualquier posible aparición de clave en el mensaje de excepción
             err_msg = str(api_exc)
             api_key_val = os.environ.get("GEMINI_API_KEY", "")
             if api_key_val and len(api_key_val) > 4:
@@ -318,15 +465,14 @@ def run_agent_tool_loop(
                 detail=f"Fallo en comunicación con API del modelo: {err_msg[:140]}",
                 duration_ms=(time.monotonic() - start_wall) * 1000,
             )
-            raise AgentExecutionError(f"Error al invocar el modelo de IA en '{agent_name}': {err_msg}") from api_exc
+            friendly = format_user_friendly_agent_error(api_exc)
+            raise AgentExecutionError(friendly) from api_exc
 
-        # Extraer llamadas a herramientas de la respuesta del modelo
         fn_calls = getattr(response, "function_calls", None)
         if not fn_calls:
             final_text = (getattr(response, "text", "") or "").strip()[:4000]
             break
 
-        # Agregar el turno del asistente al historial de conversación
         if use_genai_types and getattr(response, "candidates", None):
             contents.append(response.candidates[0].content)
         else:
@@ -338,6 +484,27 @@ def run_agent_tool_loop(
                         for fc in fn_calls
                     ],
                 }
+            )
+
+        if len(fn_calls) > 1:
+            tool_order_priority = {
+                # Preparador
+                "tool_validar_entrada": 10,
+                "tool_extraer_texto_captura": 20,
+                "tool_extraer_enlaces": 30,
+                # Analizador Enlaces
+                "tool_analizar_url": 10,
+                # Evaluador
+                "tool_reunir_hallazgos": 10,
+                "tool_calcular_puntaje": 20,
+                "tool_asignar_nivel_riesgo": 30,
+                "tool_explicar_resultado": 40,
+                "tool_recomendar_cuidados": 45,
+                "tool_generar_pdf": 50,
+            }
+            fn_calls = sorted(
+                fn_calls,
+                key=lambda fc: tool_order_priority.get(str(getattr(fc, "name", "") or ""), 99),
             )
 
         response_parts: List[Any] = []
@@ -359,7 +526,6 @@ def run_agent_tool_loop(
             fn_name = str(getattr(fc, "name", "") or "")
             raw_args = dict(getattr(fc, "args", {}) or {}) if getattr(fc, "args", None) is not None else {}
 
-            # Verificar lista cerrada de herramientas permitidas para este agente
             if fn_name not in allowed_tools:
                 tracer.record(
                     agent=agent_name,

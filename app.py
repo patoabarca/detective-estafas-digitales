@@ -317,11 +317,12 @@ def render_results_section(report: Dict[str, Any]) -> None:
         prep_data = orch_data.get("preparation") or {}
         msg_data = orch_data.get("message_analysis") or {}
         url_data = orch_data.get("url_analysis") or {}
+        eval_data = orch_data.get("evaluation") or {}
         usage_data = orch_data.get("usage_metrics") or {}
         privacy_data = orch_data.get("privacy_notice") or {}
         trace_list = orch_data.get("trace_events") or []
 
-        with st.expander("🤖 Resultado de la Orquesta de Agentes (Etapas 1, 2 y 3)", expanded=True):
+        with st.expander("🤖 Resultado de la Orquesta de Agentes (Etapas 1, 2, 3 y 4)", expanded=True):
             st.markdown(
                 f"- **Modo de ejecución:** `{orch_data.get('execution_mode')}` (Modelo: `{orch_data.get('model_used')}`)  \n"
                 f"- **Estado del Agente Preparador:** `{prep_data.get('estado', '').upper()}` "
@@ -369,6 +370,19 @@ def render_results_section(report: Dict[str, Any]) -> None:
                             f"  - `{item.get('url_id')}` (`{item.get('domain')}`) → Estado: `{item.get('estado_enlace')}` "
                             f"| Reglas: `{reglas_str}`"
                         )
+            if eval_data:
+                st.markdown("---")
+                st.markdown(
+                    f"- **Agente Evaluador (Etapa 4):** `{eval_data.get('estado', '').upper()}` "
+                    f"(Detalle: `{eval_data.get('detalle_estado', '')}`)  \n"
+                    f"- **Nivel de riesgo determinado:** `{eval_data.get('nivel_riesgo', '')}`  \n"
+                    f"- **Puntaje de severidad acumulado:** `{eval_data.get('puntaje', 0)} / 100`  \n"
+                    f"- **Skills del Agente Evaluador:** `{', '.join(eval_data.get('skills_cargadas', []))}`  \n"
+                    f"- **Herramientas invocadas:** `{', '.join(eval_data.get('herramientas_invocadas', []))}`  \n"
+                    f"- **Reglas activadas ({len(eval_data.get('reglas_activadas', []))}):** "
+                    f"`{', '.join(eval_data.get('reglas_activadas', [])) or 'Ninguna'}`  \n"
+                    f"- **Recomendaciones preventivas del sistema:** `{len(eval_data.get('recomendaciones', []))} medidas`"
+                )
             if usage_data:
                 st.markdown("---")
                 st.markdown(

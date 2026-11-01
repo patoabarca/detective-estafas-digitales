@@ -578,6 +578,89 @@ class UrlAnalysisResult:
         return data
 
 
+VALID_EVALUATION_STATES = {"correcto", "incompleto", "error"}
+VALID_RISK_LEVELS = {"ALTO", "MEDIO", "BAJO", "INDETERMINADO"}
+
+
+@dataclass
+class EvaluationResult:
+    """
+    Contrato inmutable y validado del resultado emitido por el Agente Evaluador (Etapa 4).
+    """
+    estado: Literal["correcto", "incompleto", "error"]
+    detalle_estado: str
+    nivel_riesgo: str = "INDETERMINADO"
+    puntaje: int = 0
+    resumen: str = ""
+    explicacion_no_tecnica: str = ""
+    reglas_activadas: List[str] = field(default_factory=list)
+    recomendaciones: List[str] = field(default_factory=list)
+    limitaciones: List[str] = field(default_factory=list)
+    hallazgos_unificados: List[Dict[str, Any]] = field(default_factory=list)
+    analisis_urls: List[Dict[str, Any]] = field(default_factory=list)
+    advertencias: List[str] = field(default_factory=list)
+    pdf_generado: bool = False
+    pdf_filename: Optional[str] = None
+    mensaje_error: Optional[str] = None
+    skills_cargadas: List[str] = field(default_factory=list)
+    herramientas_invocadas: List[str] = field(default_factory=list)
+
+    def validate(self) -> None:
+        if self.estado not in VALID_EVALUATION_STATES:
+            raise ContractValidationError(
+                f"Estado de evaluación inválido: '{self.estado}'. Valores permitidos: {VALID_EVALUATION_STATES}."
+            )
+        if self.nivel_riesgo not in VALID_RISK_LEVELS:
+            raise ContractValidationError(
+                f"Nivel de riesgo inválido: '{self.nivel_riesgo}'. Valores permitidos: {VALID_RISK_LEVELS}."
+            )
+        if not (0 <= self.puntaje <= 100):
+            raise ContractValidationError(
+                f"Puntaje de evaluación fuera de rango: {self.puntaje}. Debe estar entre 0 y 100."
+            )
+        # Garantía estricta de seguridad: si la evaluación es incompleta o con error,
+        # NUNCA puede declararse como RIESGO BAJO.
+        if self.estado in ("incompleto", "error") and self.nivel_riesgo == "BAJO":
+            raise ContractValidationError(
+                "Violación de seguridad: una evaluación incompleta o con error no puede clasificarse como RIESGO BAJO."
+            )
+
+    def to_engine_report(self) -> Dict[str, Any]:
+        """Convierte la evaluación al esquema unificado del reporte JSON de la aplicación."""
+        from datetime import datetime, timezone
+        injection_snips = [
+            snip
+            for ind in self.hallazgos_unificados
+            if ind.get("id") == "SEC-PROMPT-INJECTION"
+            for snip in ind.get("evidence_snippets", [])
+        ]
+        return {
+            "status": "success" if self.estado == "correcto" else self.estado,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "risk_assessment": {
+                "level": self.nivel_riesgo,
+                "score": self.puntaje,
+                "score_type": "heuristic_severity_score",
+                "score_disclaimer": "Puntaje heurístico acumulativo (0-100). No representa una probabilidad estadística de fraude.",
+                "summary": self.resumen,
+                "activated_rules": list(self.reglas_activadas),
+            },
+            "indicators_detected": list(self.hallazgos_unificados),
+            "url_analysis": list(self.analisis_urls),
+            "prompt_injection_detected": any(
+                ind.get("id") == "SEC-PROMPT-INJECTION" for ind in self.hallazgos_unificados
+            ),
+            "prompt_injection_details": injection_snips,
+            "limitations": list(self.limitaciones),
+            "recommendations": list(self.recomendaciones),
+            "non_technical_explanation": self.explicacion_no_tecnica,
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        self.validate()
+        return asdict(self)
+
+
 @dataclass
 class OrchestratorResponse:
     """
@@ -590,6 +673,7 @@ class OrchestratorResponse:
     preparation: Optional[PreparationResult] = None
     message_analysis: Optional[MessageAnalysisResult] = None
     url_analysis: Optional[UrlAnalysisResult] = None
+    evaluation: Optional[EvaluationResult] = None
     report: Optional[Dict[str, Any]] = None
     orchestrator_summary: str = ""
     privacy_notice: Dict[str, Any] = field(default_factory=dict)
@@ -617,6 +701,8 @@ class OrchestratorResponse:
                 else None
             )
             self.url_analysis.validate(expected_urls=expected_urls)
+        if self.evaluation is not None:
+            self.evaluation.validate()
         # Garantía de seguridad: si la preparación o algún análisis quedó incompleto,
         # el reporte NUNCA puede clasificar como RIESGO BAJO.
         if self.report and isinstance(self.report, dict):
@@ -635,6 +721,8 @@ class OrchestratorResponse:
             result["message_analysis"] = self.message_analysis.to_dict()
         if self.url_analysis is not None:
             result["url_analysis"] = self.url_analysis.to_dict()
+        if self.evaluation is not None:
+            result["evaluation"] = self.evaluation.to_dict()
         return result
 
 

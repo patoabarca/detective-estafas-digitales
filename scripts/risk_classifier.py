@@ -34,21 +34,20 @@ class RiskClassifier:
         self.thresh_alto = thresholds.get("alto", 50)
         self.thresh_medio = thresholds.get("medio", 20)
 
-    def classify(
+    def calculate_score(
         self,
         raw_text: str,
         text_analysis: Dict[str, Any],
         url_analyses: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """
-        Calcula el nivel de riesgo y genera la justificación basada en evidencia.
+        Calcula el puntaje heurístico (0-100) y reúne las reglas activadas correspondientes
+        a los indicadores textuales y análisis estáticos de URLs.
         """
         cleaned_text = raw_text.strip() if raw_text else ""
         indicators = text_analysis.get("indicators", [])
 
-        # 1. Caso INDETERMINADO:
-        # a) Texto inexistente o con longitud inferior a 15 caracteres
-        # b) Texto breve (< 45 caracteres) con llamados a la acción aislados sin enlace ni entidad verificable
+        # 1. Caso INDETERMINADO por texto insuficiente o fragmentado
         is_very_short = len(cleaned_text) < 45
         has_isolated_action = bool(
             re.search(
@@ -60,15 +59,19 @@ class RiskClassifier:
 
         if not cleaned_text or len(cleaned_text) < 15 or (is_very_short and has_isolated_action and has_no_evidence):
             return {
-                "level": "INDETERMINADO",
                 "score": 0,
-                "summary": "El contenido disponible es demasiado breve, fragmentado o ambiguo para emitir una evaluación de riesgo fundada. No se identificaron enlaces ni entidades verificables.",
-                "activated_rules": ["REGLA-INDET: Información o contexto insuficiente para clasificar el riesgo de forma concluyente."],
+                "activated_rules": [
+                    "REGLA-INDET: Información o contexto insuficiente para clasificar el riesgo de forma concluyente."
+                ],
+                "is_indeterminate": True,
+                "summary": (
+                    "El contenido disponible es demasiado breve, fragmentado o ambiguo para emitir "
+                    "una evaluación de riesgo fundada. No se identificaron enlaces ni entidades verificables."
+                ),
             }
 
         score = 0
         activated_rules: List[str] = []
-        indicators = text_analysis.get("indicators", [])
 
         # Mapeo de indicadores textuales a reglas ponderadas
         for ind in indicators:
@@ -154,7 +157,37 @@ class RiskClassifier:
         # Limitar puntaje máximo a 100
         score = min(score, 100)
 
-        # Determinación del nivel de riesgo
+        return {
+            "score": score,
+            "activated_rules": activated_rules,
+            "is_indeterminate": False,
+            "summary": "",
+        }
+
+    def assign_risk_level(
+        self,
+        score: int,
+        text_analysis: Dict[str, Any],
+        url_analyses: List[Dict[str, Any]],
+        is_indeterminate: bool = False,
+        indeterminate_summary: str = "",
+    ) -> Dict[str, Any]:
+        """
+        Aplica los umbrales documentados, combinaciones críticas y reglas de seguridad
+        al puntaje calculado para determinar el nivel de riesgo (ALTO, MEDIO, BAJO o INDETERMINADO).
+        """
+        if is_indeterminate:
+            return {
+                "level": "INDETERMINADO",
+                "summary": (
+                    indeterminate_summary
+                    or "El contenido disponible es demasiado breve, fragmentado o ambiguo para emitir "
+                    "una evaluación de riesgo fundada."
+                ),
+            }
+
+        indicators = text_analysis.get("indicators", [])
+
         # Condición de salto a ALTO:
         # - Puntaje >= thresh_alto (50)
         # - Presencia de Prompt Injection
@@ -181,17 +214,55 @@ class RiskClassifier:
 
         if has_injection or score >= self.thresh_alto or critical_combo:
             level = "ALTO"
-            summary = "Se detectaron múltiples indicadores concordantes con maniobras de fraude, captura indebida de credenciales, coerción o manipulación."
+            summary = (
+                "Se detectaron múltiples indicadores concordantes con maniobras de fraude, "
+                "captura indebida de credenciales, coerción o manipulación."
+            )
         elif score >= self.thresh_medio:
             level = "MEDIO"
-            summary = "Se detectaron señales aisladas de alarma (urgencia, enlaces no verificados o menciones institucionales) que requieren precaución y validación."
+            summary = (
+                "Se detectaron señales aisladas de alarma (urgencia, enlaces no verificados "
+                "o menciones institucionales) que requieren precaución y validación."
+            )
         else:
             level = "BAJO"
-            summary = "No se detectaron indicadores significativos conocidos de fraude o coerción. IMPORTANTE: La ausencia de señales no garantiza que el mensaje sea genuino."
+            summary = (
+                "No se detectaron indicadores significativos conocidos de fraude o coerción. "
+                "IMPORTANTE: La ausencia de señales no garantiza que el mensaje sea genuino."
+            )
 
         return {
             "level": level,
-            "score": score,
             "summary": summary,
-            "activated_rules": activated_rules,
+        }
+
+    def classify(
+        self,
+        raw_text: str,
+        text_analysis: Dict[str, Any],
+        url_analyses: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Calcula el nivel de riesgo y genera la justificación basada en evidencia.
+        Reutiliza calculate_score y assign_risk_level preservando compatibilidad exacta.
+        """
+        score_res = self.calculate_score(raw_text, text_analysis, url_analyses)
+        if score_res.get("is_indeterminate"):
+            return {
+                "level": "INDETERMINADO",
+                "score": 0,
+                "summary": score_res.get("summary", ""),
+                "activated_rules": score_res.get("activated_rules", []),
+            }
+
+        level_res = self.assign_risk_level(
+            score=score_res["score"],
+            text_analysis=text_analysis,
+            url_analyses=url_analyses,
+        )
+        return {
+            "level": level_res["level"],
+            "score": score_res["score"],
+            "summary": level_res["summary"],
+            "activated_rules": score_res["activated_rules"],
         }
