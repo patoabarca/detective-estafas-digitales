@@ -234,6 +234,12 @@ def run_agent_tool_loop(
             candidates_tokens_total += c_tok
             total_tokens_accumulated += t_tok
 
+            tracer.record_llm_usage(
+                agent=agent_name,
+                prompt_tokens=p_tok,
+                output_tokens=c_tok,
+                total_tokens=t_tok,
+            )
             tracer.record(
                 agent=agent_name,
                 event_type="llm_call",

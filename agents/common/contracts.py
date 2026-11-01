@@ -2,19 +2,22 @@
 Contratos de Datos y Validadores Estructurados para Agentes y Herramientas.
 
 Define y valida los formatos de entrada, llamadas a herramientas, resultados del
-Agente Preparador y respuestas del Agente Orquestador.
+Agente Preparador, resultados del Agente Analizador de Mensajes y respuestas del
+Agente Orquestador.
 
-Cumple con los requerimientos de la Etapa 1:
-- El preparador devuelve:
+Cumple con los requerimientos de las Etapas 1 y 2:
+- El preparador devuelve `PreparationResult`:
   - estado: "correcto" | "incompleto" | "error"
   - texto_extraido_o_recibido: str
   - enlaces_encontrados: List[str]
   - advertencias: List[str]
-  - detalle_estado: diferenciando explícitamente:
-    * "con_enlaces" / "sin_enlaces" (cuando estado == "correcto")
-    * "texto_no_extraible" (cuando estado == "incompleto", p. ej. captura ilegible)
-    * "entrada_invalida" (cuando estado == "error" por validación)
-    * "fallo_herramienta" (cuando estado == "error" por fallo de OCR u otra herramienta)
+  - detalle_estado: "con_enlaces" | "sin_enlaces" | "texto_no_extraible" | "entrada_invalida" | "fallo_herramienta"
+- El analizador de mensajes devuelve `MessageAnalysisResult`:
+  - estado: "correcto" | "incompleto" | "error"
+  - categorias_revisadas: List[str]
+  - estado_categorias: Dict[str, str] diferenciando "revisada_con_hallazgos", "revisada_sin_hallazgos" y "no_revisada"
+  - senales_encontradas: List[MessageSignalFinding] (con id estable, categoría, fragmento verificado contra el texto analizado)
+  - advertencias: List[str]
 """
 
 from __future__ import annotations
@@ -32,6 +35,28 @@ VALID_DETAIL_CODES = {
     "fallo_herramienta",
 }
 VALID_INPUT_MODES = {"text", "ocr_screenshot"}
+
+REQUIRED_MESSAGE_ANALYSIS_CATEGORIES: List[str] = [
+    "urgencia",
+    "amenazas",
+    "premios",
+    "pedidos_datos",
+    "pedidos_dinero",
+]
+VALID_MESSAGE_ANALYSIS_CATEGORIES = set(REQUIRED_MESSAGE_ANALYSIS_CATEGORIES)
+VALID_MESSAGE_SIGNAL_IDS = {
+    "ING-URGENCIA-ARTIFICIAL",
+    "ING-AMENAZA-BLOQUEO",
+    "FRA-PREMIO-INESPERADO",
+    "FRA-CAPTURA-CREDENCIALES",
+    "FRA-PAGO-ANTICIPADO",
+    "FRA-DEBIN-ENGANOSO",
+}
+VALID_CATEGORY_STATUSES = {
+    "revisada_con_hallazgos",
+    "revisada_sin_hallazgos",
+    "no_revisada",
+}
 
 
 class ContractValidationError(ValueError):
@@ -164,6 +189,152 @@ class PreparationResult:
 
 
 @dataclass
+class MessageSignalFinding:
+    """
+    Contrato validado para una señal detectada por el Agente Analizador de Mensajes.
+    Cada señal debe tener un identificador estable, categoría y al menos un fragmento
+    que exista literalmente en el texto analizado.
+    """
+    id_senal: str
+    categoria_skill: str
+    categoria_motor: str
+    severidad: str
+    descripcion: str
+    fragmento_justificacion: str
+    evidence_snippets: List[str] = field(default_factory=list)
+
+    def validate(self, analyzed_text: Optional[str] = None) -> None:
+        if self.id_senal not in VALID_MESSAGE_SIGNAL_IDS:
+            raise ContractValidationError(
+                f"Identificador de señal inválido: '{self.id_senal}'. "
+                f"Permitidos: {sorted(VALID_MESSAGE_SIGNAL_IDS)}"
+            )
+        if self.categoria_skill not in VALID_MESSAGE_ANALYSIS_CATEGORIES:
+            raise ContractValidationError(
+                f"Categoría de skill inválida: '{self.categoria_skill}'. "
+                f"Permitidas: {sorted(VALID_MESSAGE_ANALYSIS_CATEGORIES)}"
+            )
+        if not isinstance(self.fragmento_justificacion, str) or not self.fragmento_justificacion.strip():
+            raise ContractValidationError(
+                f"La señal '{self.id_senal}' carece de fragmento de justificación válido."
+            )
+        if not isinstance(self.evidence_snippets, list) or not self.evidence_snippets:
+            raise ContractValidationError(
+                f"La señal '{self.id_senal}' debe incluir al menos un fragmento en 'evidence_snippets'."
+            )
+
+        # Verificación estricta anti-alucinación en código:
+        # todo fragmento debe corresponder literalmente al texto analizado.
+        if analyzed_text is not None:
+            if self.fragmento_justificacion not in analyzed_text:
+                raise ContractValidationError(
+                    f"Evidencia inventada rechazada en '{self.id_senal}': el fragmento "
+                    f"'{self.fragmento_justificacion[:80]}' no existe en el texto analizado."
+                )
+            for snip in self.evidence_snippets:
+                if not isinstance(snip, str) or not snip.strip() or snip not in analyzed_text:
+                    raise ContractValidationError(
+                        f"Evidencia inventada rechazada en '{self.id_senal}': el snippet "
+                        f"'{str(snip)[:80]}' no pertenece al texto analizado."
+                    )
+
+    def to_engine_indicator(self) -> Dict[str, Any]:
+        """Convierte el hallazgo validado al formato exacto esperado por RiskClassifier y ReportGenerator."""
+        return {
+            "id": self.id_senal,
+            "category": self.categoria_motor,
+            "skill_category": self.categoria_skill,
+            "severity": self.severidad,
+            "description": self.descripcion,
+            "evidence_snippets": list(self.evidence_snippets),
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class MessageAnalysisResult:
+    """
+    Contrato estricto de salida del Agente Analizador de Mensajes (Etapa 2).
+
+    Garantiza:
+    - Estado: "correcto" | "incompleto" | "error".
+    - Diferenciación explícita entre "revisada_con_hallazgos", "revisada_sin_hallazgos" y "no_revisada".
+    - Prohibición de marcar estado == "correcto" si falta cualquiera de las 5 categorías obligatorias.
+    - Verificación de evidencia literal contra el texto analizado.
+    """
+    estado: Literal["correcto", "incompleto", "error"]
+    categorias_revisadas: List[str] = field(default_factory=list)
+    categorias_sin_hallazgos: List[str] = field(default_factory=list)
+    categorias_no_revisadas: List[str] = field(default_factory=list)
+    estado_categorias: Dict[str, str] = field(default_factory=dict)
+    senales_encontradas: List[MessageSignalFinding] = field(default_factory=list)
+    advertencias: List[str] = field(default_factory=list)
+    mensaje_error: Optional[str] = None
+    skills_cargadas: List[str] = field(default_factory=list)
+    herramientas_invocadas: List[str] = field(default_factory=list)
+
+    def validate(self, analyzed_text: Optional[str] = None) -> None:
+        if self.estado not in VALID_PREPARATION_STATES:
+            raise ContractValidationError(
+                f"Estado de análisis de mensaje inválido: '{self.estado}'."
+            )
+        if not isinstance(self.categorias_revisadas, list):
+            raise ContractValidationError("'categorias_revisadas' debe ser una lista.")
+        for c in self.categorias_revisadas:
+            if c not in VALID_MESSAGE_ANALYSIS_CATEGORIES:
+                raise ContractValidationError(f"Categoría desconocida en 'categorias_revisadas': '{c}'.")
+
+        for cat_key, cat_status in self.estado_categorias.items():
+            if cat_key not in VALID_MESSAGE_ANALYSIS_CATEGORIES:
+                raise ContractValidationError(f"Categoría desconocida en 'estado_categorias': '{cat_key}'.")
+            if cat_status not in VALID_CATEGORY_STATUSES:
+                raise ContractValidationError(
+                    f"Estado de categoría inválido para '{cat_key}': '{cat_status}'."
+                )
+
+        # No marcar el análisis como completo ("correcto") si faltan categorías obligatorias
+        missing_required = set(REQUIRED_MESSAGE_ANALYSIS_CATEGORIES) - set(self.categorias_revisadas)
+        if self.estado == "correcto" and missing_required:
+            raise ContractValidationError(
+                f"Inconsistencia de contrato: el análisis de mensaje no puede tener estado='correcto' "
+                f"cuando faltan categorías obligatorias sin revisar: {sorted(missing_required)}."
+            )
+
+        for sig in self.senales_encontradas:
+            if not isinstance(sig, MessageSignalFinding):
+                raise ContractValidationError("Todos los elementos de 'senales_encontradas' deben ser MessageSignalFinding.")
+            sig.validate(analyzed_text=analyzed_text)
+            if sig.categoria_skill not in self.categorias_revisadas:
+                raise ContractValidationError(
+                    f"La señal '{sig.id_senal}' pertenece a una categoría ('{sig.categoria_skill}') "
+                    f"que no figura como revisada."
+                )
+
+    def to_engine_indicators(self) -> List[Dict[str, Any]]:
+        """Devuelve la lista deduplicada de indicadores para `RiskClassifier`."""
+        seen_ids: Dict[str, Dict[str, Any]] = {}
+        for sig in self.senales_encontradas:
+            ind = sig.to_engine_indicator()
+            sig_id = ind["id"]
+            if sig_id not in seen_ids:
+                seen_ids[sig_id] = ind
+            else:
+                existing_snips = seen_ids[sig_id]["evidence_snippets"]
+                for snip in ind["evidence_snippets"]:
+                    if snip not in existing_snips:
+                        existing_snips.append(snip)
+        return list(seen_ids.values())
+
+    def to_dict(self) -> Dict[str, Any]:
+        self.validate()
+        data = asdict(self)
+        data["senales_encontradas"] = [s.to_dict() for s in self.senales_encontradas]
+        return data
+
+
+@dataclass
 class OrchestratorResponse:
     """
     Contrato de salida del Agente Orquestador hacia la aplicación Streamlit.
@@ -173,9 +344,11 @@ class OrchestratorResponse:
     provider: str = "google-genai"
     model_used: str = ""
     preparation: Optional[PreparationResult] = None
+    message_analysis: Optional[MessageAnalysisResult] = None
     report: Optional[Dict[str, Any]] = None
     orchestrator_summary: str = ""
     privacy_notice: Dict[str, Any] = field(default_factory=dict)
+    usage_metrics: Dict[str, Any] = field(default_factory=dict)
     trace_events: List[Dict[str, Any]] = field(default_factory=list)
     error_type: Optional[str] = None
     error_message: Optional[str] = None
@@ -185,6 +358,13 @@ class OrchestratorResponse:
             raise ContractValidationError(f"Estado de orquestador inválido: '{self.status}'")
         if self.preparation is not None:
             self.preparation.validate()
+        if self.message_analysis is not None:
+            ref_text = (
+                self.preparation.texto_extraido_o_recibido
+                if self.preparation and self.preparation.texto_extraido_o_recibido
+                else None
+            )
+            self.message_analysis.validate(analyzed_text=ref_text)
         # Garantía de seguridad: si la preparación quedó incompleta (ej. captura ilegible),
         # el reporte NUNCA puede clasificar como RIESGO BAJO.
         if self.report and isinstance(self.report, dict):
@@ -199,6 +379,8 @@ class OrchestratorResponse:
         result = asdict(self)
         if self.preparation is not None:
             result["preparation"] = self.preparation.to_dict()
+        if self.message_analysis is not None:
+            result["message_analysis"] = self.message_analysis.to_dict()
         return result
 
 
@@ -251,4 +433,3 @@ def validate_tool_arguments(
         validated[k] = v
 
     return validated
-

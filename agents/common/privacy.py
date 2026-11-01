@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 from typing import Any, Dict, List, Tuple
+from urllib.parse import urlsplit, urlunsplit
 
 from scripts.url_analyzer import extract_urls
 
@@ -31,6 +32,57 @@ CUIT_CUIL_REGEX = re.compile(r"\b(?:20|23|24|27|30|33|34)-\d{8}-\d\b")
 DNI_REGEX = re.compile(r"(?i)\b(?:dni|documento)\s*[:#º°]?\s*(\d{1,2}\.?\d{3}\.?\d{3}|\d{7,8})\b")
 EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 PHONE_REGEX = re.compile(r"(?:\+?54\s*9?\s*)?(?:\(?0?\d{2,4}\)?[\s-]*)?\d{3,4}[\s-]+\d{4}\b")
+URL_SENSITIVE_PARAM_REGEX = re.compile(
+    r"(?i)((?:token|pass|password|clave|pin|otp|dni|cuit|cuil|cbu|cvu|email|correo|session|key|secret)=)([^&#\s]+)"
+)
+
+
+def sanitize_url_for_external_llm(url: str) -> Tuple[str, bool]:
+    """
+    Oculta credenciales embebidas (`user:pass@host`) y parámetros o valores sensibles
+    en una URL antes de enviarla al modelo externo, conservando el esquema, dominio y ruta base.
+    El enlace original se mantiene intacto en memoria local para `url_analyzer`.
+    """
+    if not url:
+        return "", False
+
+    changed = False
+    working = url
+    try:
+        parts = urlsplit(working if "://" in working else f"http://{working}")
+        has_scheme = "://" in working
+        netloc = parts.netloc
+        if "@" in netloc:
+            _, _, hostpart = netloc.rpartition("@")
+            netloc = f"[CREDENCIAL_URL_OCULTA]@{hostpart}"
+            changed = True
+
+        path = parts.path
+        if CBU_CVU_REGEX.search(path):
+            path = CBU_CVU_REGEX.sub("[CBU_CVU_OCULTO]", path)
+            changed = True
+        if EMAIL_REGEX.search(path):
+            path = EMAIL_REGEX.sub("[EMAIL_OCULTO]", path)
+            changed = True
+
+        query = parts.query
+        if query:
+            if URL_SENSITIVE_PARAM_REGEX.search(query):
+                query = URL_SENSITIVE_PARAM_REGEX.sub(r"\1[VALOR_URL_OCULTO]", query)
+                changed = True
+            if EMAIL_REGEX.search(query):
+                query = EMAIL_REGEX.sub("[EMAIL_OCULTO]", query)
+                changed = True
+            if CBU_CVU_REGEX.search(query):
+                query = CBU_CVU_REGEX.sub("[CBU_CVU_OCULTO]", query)
+                changed = True
+
+        rebuilt = urlunsplit((parts.scheme if has_scheme else "", netloc, path, query, parts.fragment))
+        if not has_scheme and rebuilt.startswith("//"):
+            rebuilt = rebuilt[2:]
+        return rebuilt, changed
+    except Exception:
+        return working, False
 
 
 @dataclass
@@ -109,9 +161,14 @@ def sanitize_text_for_external_llm(
     working = _apply_mask(EMAIL_REGEX, "[EMAIL_OCULTO]", "Correo electrónico", working)
     working = _apply_mask(PHONE_REGEX, "[TELEFONO_OCULTO]", "Teléfono", working)
 
-    # Restaurar las URLs originales para que la extracción/auditoría estática funcione sin alteración
+    # Restaurar las URLs con sanitización preventiva de credenciales o parámetros sensibles
     for token, original_url in url_placeholders.items():
-        working = working.replace(token, original_url)
+        safe_url, url_redacted = sanitize_url_for_external_llm(original_url)
+        if url_redacted:
+            redactions += 1
+            if "Credenciales/Parámetros en URL" not in categories:
+                categories.append("Credenciales/Parámetros en URL")
+        working = working.replace(token, safe_url)
 
     return SanitizationReport(
         masked_text=working,
@@ -120,4 +177,12 @@ def sanitize_text_for_external_llm(
         sent_char_count=len(working),
         provider_name=provider_name,
     )
+
+
+def sanitize_snippets_for_external_llm(snippets: List[str]) -> List[str]:
+    """
+    Aplica enmascaramiento preventivo de PII a fragmentos de evidencia antes de
+    incluirlos en la respuesta de una herramienta que vuelve al modelo externo.
+    """
+    return [sanitize_text_for_external_llm(s).masked_text for s in (snippets or [])]
 
