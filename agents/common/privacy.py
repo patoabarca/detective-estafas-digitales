@@ -5,10 +5,11 @@ Antes de enviar texto al proveedor externo de IA (Google Gemini API):
 1. Oculta patrones evidentes de datos personales o bancarios innecesarios para la
    orquestación/preparación (CBU/CVU de 22 dígitos, tarjetas de 13-19 dígitos,
    direcciones de correo personales, teléfonos y números de DNI/CUIT).
-2. Conserva intactas las direcciones web (URLs) y la estructura del mensaje para
-   que el modelo y las herramientas puedan identificar enlaces y señales contextuales.
-3. El texto original sin enmascarar se conserva exclusivamente en memoria RAM local
-   para el análisis determinístico local, sin escribirse en logs.
+2. Conserva la estructura de las direcciones web (URLs) y del mensaje, ocultando
+   credenciales embebidas (`user:pass@host`) y valores sensibles en rutas, parámetros
+   (`query`) o fragmentos (`#fragment`) de las URLs antes de enviarlas al LLM externo.
+3. El texto y las URLs originales sin enmascarar se conservan exclusivamente en memoria
+   RAM local para el análisis determinístico local, sin escribirse en logs ni trazas.
 
 Nota de honestidad técnica: El ocultamiento por expresiones regulares reduce la
 exposición de datos frecuentes, pero NO garantiza eliminar el 100% de los datos
@@ -33,56 +34,70 @@ DNI_REGEX = re.compile(r"(?i)\b(?:dni|documento)\s*[:#º°]?\s*(\d{1,2}\.?\d{3}\
 EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 PHONE_REGEX = re.compile(r"(?:\+?54\s*9?\s*)?(?:\(?0?\d{2,4}\)?[\s-]*)?\d{3,4}[\s-]+\d{4}\b")
 URL_SENSITIVE_PARAM_REGEX = re.compile(
-    r"(?i)((?:token|pass|password|clave|pin|otp|dni|cuit|cuil|cbu|cvu|email|correo|session|key|secret)=)([^&#\s]+)"
+    r"(?i)((?:token|access_token|id_token|auth|jwt|pass|password|pwd|clave|pin|otp|dni|cuit|cuil|cbu|cvu|email|correo|user|usuario|session|sesion|key|secret)=)([^&#\s]+)"
+)
+URL_PATH_SENSITIVE_SEGMENT_REGEX = re.compile(
+    r"(?i)(/(?:token|reset|verify|confirm|auth|session|sesion|clave|otp|dni|cliente|usuario|user|id|cuenta)/)([A-Za-z0-9._~-]{6,})"
 )
 
 
-def sanitize_url_for_external_llm(url: str) -> Tuple[str, bool]:
+def _redact_url_component(comp: str) -> Tuple[str, int]:
+    """Oculta parámetros sensibles, correos, CBU/CVU, CUIT y tarjetas dentro de path/query/fragment."""
+    if not comp:
+        return "", 0
+    updated = comp
+    count = 0
+
+    def _sub_and_count(pat: re.Pattern, repl: str, s: str) -> Tuple[str, int]:
+        matches = len(pat.findall(s))
+        if matches > 0:
+            return pat.sub(repl, s), matches
+        return s, 0
+
+    updated, c1 = _sub_and_count(URL_SENSITIVE_PARAM_REGEX, r"\1[VALOR_URL_OCULTO]", updated)
+    updated, c2 = _sub_and_count(URL_PATH_SENSITIVE_SEGMENT_REGEX, r"\1[TOKEN_RUTA_OCULTO]", updated)
+    updated, c3 = _sub_and_count(EMAIL_REGEX, "[EMAIL_OCULTO]", updated)
+    updated, c4 = _sub_and_count(CBU_CVU_REGEX, "[CBU_CVU_OCULTO]", updated)
+    updated, c5 = _sub_and_count(CUIT_CUIL_REGEX, "[CUIT_OCULTO]", updated)
+    updated, c6 = _sub_and_count(DNI_REGEX, "DNI [DNI_OCULTO]", updated)
+    count = c1 + c2 + c3 + c4 + c5 + c6
+    return updated, count
+
+
+def sanitize_url_for_external_llm(url: str) -> Tuple[str, int]:
     """
     Oculta credenciales embebidas (`user:pass@host`) y parámetros o valores sensibles
-    en una URL antes de enviarla al modelo externo, conservando el esquema, dominio y ruta base.
+    en rutas (`path`), `query` y `fragment` de una URL antes de enviarla al modelo externo,
+    conservando el esquema, dominio y estructura.
+    Devuelve la URL sanitizada y la cantidad de ocultamientos aplicados.
     El enlace original se mantiene intacto en memoria local para `url_analyzer`.
     """
     if not url:
-        return "", False
+        return "", 0
 
-    changed = False
-    working = url
+    redactions_count = 0
+    working = url.strip()
     try:
-        parts = urlsplit(working if "://" in working else f"http://{working}")
         has_scheme = "://" in working
+        parts = urlsplit(working if has_scheme else f"http://{working}")
         netloc = parts.netloc
         if "@" in netloc:
             _, _, hostpart = netloc.rpartition("@")
             netloc = f"[CREDENCIAL_URL_OCULTA]@{hostpart}"
-            changed = True
+            redactions_count += 1
 
-        path = parts.path
-        if CBU_CVU_REGEX.search(path):
-            path = CBU_CVU_REGEX.sub("[CBU_CVU_OCULTO]", path)
-            changed = True
-        if EMAIL_REGEX.search(path):
-            path = EMAIL_REGEX.sub("[EMAIL_OCULTO]", path)
-            changed = True
+        path, path_count = _redact_url_component(parts.path)
+        query, query_count = _redact_url_component(parts.query)
+        fragment, frag_count = _redact_url_component(parts.fragment)
+        redactions_count += (path_count + query_count + frag_count)
 
-        query = parts.query
-        if query:
-            if URL_SENSITIVE_PARAM_REGEX.search(query):
-                query = URL_SENSITIVE_PARAM_REGEX.sub(r"\1[VALOR_URL_OCULTO]", query)
-                changed = True
-            if EMAIL_REGEX.search(query):
-                query = EMAIL_REGEX.sub("[EMAIL_OCULTO]", query)
-                changed = True
-            if CBU_CVU_REGEX.search(query):
-                query = CBU_CVU_REGEX.sub("[CBU_CVU_OCULTO]", query)
-                changed = True
-
-        rebuilt = urlunsplit((parts.scheme if has_scheme else "", netloc, path, query, parts.fragment))
+        rebuilt = urlunsplit((parts.scheme if has_scheme else "", netloc, path, query, fragment))
         if not has_scheme and rebuilt.startswith("//"):
             rebuilt = rebuilt[2:]
-        return rebuilt, changed
+        return rebuilt, redactions_count
     except Exception:
-        return working, False
+        fallback, fb_count = _redact_url_component(working)
+        return fallback, fb_count
 
 
 @dataclass
@@ -96,9 +111,10 @@ class SanitizationReport:
     disclaimer: str = (
         "Se enviaron al proveedor externo únicamente metadatos de control y el texto con "
         "ocultamiento preventivo de patrones numéricos/personales comunes (CBU/CVU, tarjetas, "
-        "CUIT/DNI, correos y teléfonos). Las imágenes nunca se envían a la API (se procesan con "
-        "Tesseract OCR local). Importante: el ocultamiento automático reduce la exposición, pero "
-        "no garantiza eliminar todos los datos sensibles que pudieran escribirse en texto libre."
+        "CUIT/DNI, correos, teléfonos y credenciales/tokens en URLs). Las imágenes nunca se envían "
+        "a la API (se procesan con Tesseract OCR local). Importante: el ocultamiento automático "
+        "reduce la exposición, pero no garantiza eliminar todos los datos sensibles que pudieran "
+        "escribirse en texto libre."
     )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -119,8 +135,8 @@ def sanitize_text_for_external_llm(
     provider_name: str = "Google Gemini API",
 ) -> SanitizationReport:
     """
-    Oculta datos personales/financieros obvios preservando las URLs del mensaje
-    para que los agentes no pierdan visibilidad sobre los enlaces sospechosos.
+    Oculta datos personales/financieros obvios preservando el dominio y estructura de las URLs
+    del mensaje (pero redactando credenciales, tokens o correos dentro de las URLs).
     """
     if not text:
         return SanitizationReport(
@@ -184,5 +200,8 @@ def sanitize_snippets_for_external_llm(snippets: List[str]) -> List[str]:
     Aplica enmascaramiento preventivo de PII a fragmentos de evidencia antes de
     incluirlos en la respuesta de una herramienta que vuelve al modelo externo.
     """
-    return [sanitize_text_for_external_llm(s).masked_text for s in (snippets or [])]
-
+    sanitized: List[str] = []
+    for s in snippets or []:
+        rep = sanitize_text_for_external_llm(str(s))
+        sanitized.append(rep.masked_text)
+    return sanitized

@@ -109,9 +109,9 @@ def get_agent_runtime_status() -> Dict[str, Any]:
     }
 
 
-def create_gemini_client(api_key: Optional[str] = None, timeout_ms: int = 15000) -> Any:
+def create_gemini_client(api_key: Optional[str] = None, timeout_ms: int = 30000) -> Any:
     """
-    Inicializa el cliente oficial `google.genai.Client` con timeout acotado.
+    Inicializa el cliente oficial `google.genai.Client` con timeout acotado (30s).
     Nunca registra ni expone la clave en mensajes de error.
     """
     load_local_env_file()
@@ -203,13 +203,13 @@ def run_agent_tool_loop(
 
     while True:
         elapsed = time.monotonic() - start_wall
-        if elapsed > max_elapsed_seconds:
+        if elapsed >= max_elapsed_seconds:
             tracer.record(
                 agent=agent_name,
                 event_type="agent_error",
                 tool="none",
                 status="error",
-                detail=f"Tiempo máximo de ejecución excedido ({elapsed:.2f}s > {max_elapsed_seconds}s).",
+                detail=f"Tiempo máximo de ejecución excedido ({elapsed:.2f}s >= {max_elapsed_seconds}s).",
                 duration_ms=elapsed * 1000,
             )
             raise AgentExecutionError(
@@ -218,11 +218,62 @@ def run_agent_tool_loop(
 
         llm_t0 = time.monotonic()
         try:
-            response = client.models.generate_content(
-                model=resolved_model,
-                contents=contents,
-                config=config,
-            )
+            # Reintento único ante fallos transitorios de red / deadline de la API (503/504)
+            # verificando en todo momento que reste tiempo en el presupuesto
+            response = None
+            last_transient_exc: Optional[Exception] = None
+            for attempt in range(2):
+                curr_elapsed = time.monotonic() - start_wall
+                if curr_elapsed >= max_elapsed_seconds:
+                    tracer.record(
+                        agent=agent_name,
+                        event_type="agent_error",
+                        tool="none",
+                        status="error",
+                        detail=f"Tiempo máximo excedido antes de llamada/reintento #{attempt + 1} ({curr_elapsed:.2f}s >= {max_elapsed_seconds}s).",
+                        duration_ms=curr_elapsed * 1000,
+                    )
+                    raise AgentExecutionError(
+                        f"El agente '{agent_name}' superó el tiempo máximo permitido de {max_elapsed_seconds}s (sin tiempo para llamada/reintento)."
+                    )
+
+                try:
+                    response = client.models.generate_content(
+                        model=resolved_model,
+                        contents=contents,
+                        config=config,
+                    )
+                    break
+                except Exception as call_exc:
+                    exc_str = str(call_exc)
+                    is_transient = (
+                        "504" in exc_str
+                        or "503" in exc_str
+                        or "DEADLINE_EXCEEDED" in exc_str
+                        or "UNAVAILABLE" in exc_str
+                    )
+                    if is_transient and attempt == 0:
+                        last_transient_exc = call_exc
+                        rem_for_retry = max_elapsed_seconds - (time.monotonic() - start_wall)
+                        if rem_for_retry <= 1.5:
+                            tracer.record(
+                                agent=agent_name,
+                                event_type="agent_error",
+                                tool="none",
+                                status="error",
+                                detail=f"Tiempo insuficiente para reintento ({rem_for_retry:.2f}s <= 1.5s). Se cancela reintento.",
+                                duration_ms=(time.monotonic() - start_wall) * 1000,
+                            )
+                            raise AgentExecutionError(
+                                f"Tiempo insuficiente ({rem_for_retry:.2f}s) para reintentar llamada tras fallo transitorio en '{agent_name}'."
+                            ) from call_exc
+                        time.sleep(1.5)
+                        continue
+                    raise
+
+            if response is None and last_transient_exc:
+                raise last_transient_exc
+
             llm_ms = (time.monotonic() - llm_t0) * 1000
             llm_calls_count += 1
 
