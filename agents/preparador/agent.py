@@ -139,6 +139,7 @@ class PreparadorAgent:
         self,
         session_ctx: PreparationSessionContext,
         tracer: AgentTracer,
+        max_elapsed_seconds: float = 20.0,
     ) -> PreparationResult:
         """
         Ejecuta el Agente Preparador sobre el contexto de sesión y devuelve
@@ -186,7 +187,7 @@ class PreparadorAgent:
             llm_client=self.llm_client,
             model_name=self.model_name,
             max_tool_calls=5,
-            max_elapsed_seconds=20.0,
+            max_elapsed_seconds=max_elapsed_seconds,
         )
 
         result = self._build_validated_result(session_ctx)

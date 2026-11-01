@@ -1210,6 +1210,66 @@ class TestOrchestratorSecurityAndFlows:
         assert resp.report is not None
         assert resp.report["risk_assessment"]["level"] == "ALTO"
 
+    def test_llm_tool_loop_aborts_without_retry_when_time_budget_exhausted(self):
+        """
+        Verifica que ante un error transitorio (504 DEADLINE_EXCEEDED), si el presupuesto
+        de tiempo restante es insuficiente (<= 1.5s para backoff), `run_agent_tool_loop`
+        cancela inmediatamente el reintento y lanza `AgentExecutionError` sin iniciar nuevas llamadas.
+        """
+        call_attempts = 0
+
+        class TransientFailingModels:
+            def generate_content(self, model: str, contents: Any, config: Any):
+                nonlocal call_attempts
+                call_attempts += 1
+                raise RuntimeError("504 DEADLINE_EXCEEDED: Gateway timeout")
+
+        class TransientFailingClient:
+            is_mock_client = True
+
+            def __init__(self):
+                self.models = TransientFailingModels()
+
+        tracer = AgentTracer()
+        # Presupuesto muy corto (0.5s), menor que el backoff de reintento (1.5s)
+        with pytest.raises(AgentExecutionError, match="Tiempo insuficiente"):
+            run_agent_tool_loop(
+                agent_name="test_agent",
+                system_instruction="instrucciones",
+                user_prompt="prompt",
+                allowed_tools={},
+                tool_declarations=[],
+                tracer=tracer,
+                llm_client=TransientFailingClient(),
+                max_elapsed_seconds=0.5,
+            )
+
+        # Solo debe haber ocurrido 1 intento; el reintento fue abortado de forma inmediata
+        assert call_attempts == 1
+
+    def test_orchestrator_aborts_and_reports_error_when_global_time_budget_exhausted(self):
+        """
+        Verifica que el Orquestador impida iniciar subagentes o herramientas cuando el presupuesto
+        global de tiempo (`max_total_elapsed_seconds`) se agota.
+        """
+        # Orquestador con 0.0001 segundos de presupuesto total
+        orq = OrquestadorAgent(
+            orquestador_llm_client=make_standard_orquestador_mock_client("text"),
+            preparador_llm_client=make_standard_preparador_mock_client("text"),
+            analizador_mensajes_llm_client=make_standard_analizador_mensajes_mock_client(),
+            analizador_enlaces_llm_client=make_standard_analizador_enlaces_mock_client(),
+            max_total_elapsed_seconds=0.0001,
+        )
+        import time
+        time.sleep(0.001)
+        resp = orq.run(AgentInputRequest(input_mode="text", text_content="Mensaje de prueba"))
+        assert resp.status == "error"
+        assert resp.error_type == "AgentExecutionError"
+        assert (
+            "presupuesto total de tiempo" in (resp.error_message or "")
+            or "tiempo máximo" in (resp.error_message or "")
+        )
+
 
 # =============================================================================
 # 6. Prueba Opcional de Ejecución Real con Google Gemini API (si hay GEMINI_API_KEY)

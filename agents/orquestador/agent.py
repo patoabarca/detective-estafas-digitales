@@ -434,12 +434,16 @@ class OrquestadorAgent:
                 allowed_params={"input_mode": str},
                 required_params=["input_mode"],
             )
-            _remaining_seconds()
+            rem_sec = _remaining_seconds(cap=20.0)
             preparador = PreparadorAgent(
                 llm_client=self.preparador_llm_client,
                 model_name=self.model_name,
             )
-            prep_res = preparador.run(session_ctx=session_ctx, tracer=tracer)
+            prep_res = preparador.run(
+                session_ctx=session_ctx,
+                tracer=tracer,
+                max_elapsed_seconds=rem_sec,
+            )
             preparation_holder["result"] = prep_res
 
             # Si la preparación fue exitosa y no hay enlaces, registrar de forma preventiva
@@ -633,6 +637,7 @@ class OrquestadorAgent:
                 raise ContractValidationError(
                     "El parámetro 'confirm_prepared' debe ser True para ejecutar el motor determinístico."
                 )
+            _remaining_seconds()
 
             # 1. Verificar preparación
             prep_res = preparation_holder.get("result")
