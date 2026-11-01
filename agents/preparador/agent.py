@@ -101,15 +101,16 @@ PREPARADOR_TOOL_DECLARATIONS: List[Dict[str, Any]] = [
     {
         "name": "tool_extraer_enlaces",
         "description": (
-            "Extrae y analiza estáticamente todas las direcciones web (URLs) presentes en el texto "
-            "validado o extraído por OCR, sin realizar conexiones de red."
+            "Extrae de forma estática todas las direcciones web (URLs) presentes en el texto "
+            "validado o extraído por OCR, asignándoles identificadores de referencia sin realizar "
+            "conexiones de red ni análisis de riesgo."
         ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
                 "include_static_metadata": {
                     "type": "BOOLEAN",
-                    "description": "Si es true, incluye metadatos estáticos de dominio, IP y subdominios.",
+                    "description": "Si es true, confirma la extracción de referencias de enlaces de la sesión.",
                 }
             },
             "required": [],

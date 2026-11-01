@@ -18,8 +18,12 @@ from typing import Any, Callable, Dict, List, Optional
 from PIL import Image
 
 from agents.common.contracts import ContractValidationError, validate_tool_arguments
-from agents.common.privacy import SanitizationReport, sanitize_text_for_external_llm
-from scripts.url_analyzer import analyze_urls_in_text, extract_urls
+from agents.common.privacy import (
+    SanitizationReport,
+    sanitize_text_for_external_llm,
+    sanitize_url_for_external_llm,
+)
+from scripts.url_analyzer import extract_urls
 from scripts.worker import load_policy
 from web.analysis_adapter import analyze_text, normalize_text_content
 from web.image_processor import (
@@ -62,6 +66,8 @@ class PreparationSessionContext:
 
     links_extracted: bool = False
     extracted_urls: List[str] = field(default_factory=list)
+    url_id_map: Dict[str, str] = field(default_factory=dict)
+    masked_url_id_map: Dict[str, str] = field(default_factory=dict)
     url_details: List[Dict[str, Any]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     tools_called: List[str] = field(default_factory=list)
@@ -364,7 +370,10 @@ def execute_tool_extraer_enlaces(
 ) -> Dict[str, Any]:
     """
     Herramienta Python de la skill `extraer-enlaces`.
-    Extrae y audita estáticamente las URLs en el texto activo de la sesión (Zero Network).
+    Extrae de forma estática las URLs en el texto activo de la sesión (Zero Network)
+    y les asigna identificadores de referencia (`URL-1`, `URL-2`, ...).
+    No realiza análisis de riesgo estructural sobre los enlaces (esa responsabilidad
+    corresponde al Agente Analizador de Enlaces en la Etapa 3).
     """
     validate_tool_arguments(
         tool_name="tool_extraer_enlaces",
@@ -379,6 +388,7 @@ def execute_tool_extraer_enlaces(
         return {
             "status": "no_links",
             "links_count": 0,
+            "url_ids": [],
             "urls": [],
             "url_details": [],
             "warnings": ["No hay texto disponible en la sesión para buscar enlaces."],
@@ -387,31 +397,34 @@ def execute_tool_extraer_enlaces(
 
     try:
         urls = extract_urls(ctx.raw_active_text)
-        details = analyze_urls_in_text(ctx.raw_active_text)
         ctx.extracted_urls = list(urls)
-        ctx.url_details = list(details)
+        ctx.url_id_map = {f"URL-{idx}": raw_u for idx, raw_u in enumerate(urls, start=1)}
+        ctx.masked_url_id_map = {
+            url_id: sanitize_url_for_external_llm(raw_u)[0]
+            for url_id, raw_u in ctx.url_id_map.items()
+        }
+        ctx.url_details = []
 
-        link_warnings: List[str] = []
-        for d in details:
-            for finding in d.get("findings", []):
-                if "HTTPS" not in finding:  # Destacar anomalías reales como advertencia
-                    w_str = f"URL [{d.get('domain')}]: {finding}"
-                    link_warnings.append(w_str)
-                    if w_str not in ctx.warnings:
-                        ctx.warnings.append(w_str)
+        ocr_link_warnings: List[str] = []
+        for uw in ctx.ocr_url_warnings:
+            exp = uw.get("explanation")
+            if exp and exp not in ocr_link_warnings:
+                ocr_link_warnings.append(exp)
 
         return {
             "status": "ok" if urls else "no_links",
             "links_count": len(urls),
-            "urls": urls,
-            "url_details": details,
-            "warnings": link_warnings,
+            "url_ids": list(ctx.url_id_map.keys()),
+            "urls": list(ctx.masked_url_id_map.values()),
+            "url_details": [],
+            "warnings": ocr_link_warnings,
             "error_message": None,
         }
     except Exception as exc:
         return {
             "status": "tool_error",
             "links_count": 0,
+            "url_ids": [],
             "urls": [],
             "url_details": [],
             "warnings": [],

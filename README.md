@@ -47,7 +47,7 @@ El sistema implementa tres recorridos complementarios que comparten las mismas h
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
 ┌───────────────────────────────────▼────────────────────────────────────┐
-│  VÍA 2B: APP WEB STREAMLIT - MODO ORQUESTA DE AGENTES (ETAPAS 1 y 2)   │
+│  VÍA 2B: APP WEB STREAMLIT - MODO ORQUESTA DE AGENTES (ETAPAS 1, 2 y 3)│
 │                                                                        │
 │   Streamlit (app.py)                                                   │
 │     ➔ Sanitización preventiva de PII en texto, URLs y snippets         │
@@ -56,8 +56,8 @@ El sistema implementa tres recorridos complementarios que comparten las mismas h
 │         │     ➔ Agente Preparador (agents/preparador/)                 │
 │         │         ├── Skill + Tool: validar-entrada                    │
 │         │         ├── Skill + Tool: extraer-texto-captura (si imagen)  │
-│         │         └── Skill + Tool: extraer-enlaces                    │
-│         │     ➔ PreparationResult (estado, detalle_estado, enlaces)    │
+│         │         └── Skill + Tool: extraer-enlaces (solo extracción)  │
+│         │     ➔ PreparationResult (estado, detalle_estado, url_ids)    │
 │         ├── 2. Tool: delegar_analisis_mensaje (si preparación OK)      │
 │         │     ➔ Agente Analizador de Mensajes                          │
 │         │       (agents/analizador_mensajes/ - Parallel Tool-Calling)  │
@@ -68,45 +68,61 @@ El sistema implementa tres recorridos complementarios que comparten las mismas h
 │         │         └── Skill + Tool: detectar-pedidos-dinero            │
 │         │     ➔ MessageAnalysisResult (5 categorías revisadas,         │
 │         │       señales verificadas contra el texto original)          │
-│         └── 3. Tool: ejecutar_motor_deterministico (si 5/5 revisadas)  │
+│         ├── 3. Tool: delegar_analisis_enlaces (condicional si hay URLs)│
+│         │     ➔ Agente Analizador de Enlaces                           │
+│         │       (agents/analizador_enlaces/ - Batch Tool-Calling)      │
+│         │         └── Skill + Tool: analizar-url                       │
+│         │     ➔ UrlAnalysisResult (REGLA-URL-01 a 05, Zero Network,    │
+│         │       advertencias o motivo_omision si sin_enlaces)          │
+│         └── 4. Tool: ejecutar_motor_deterministico (si todo OK)        │
 │               ➔ TextAnalyzer.compose_analysis_from_agent_findings()    │
-│                 (integra hallazgos sin reejecutar ni duplicar puntaje) │
+│                 + precomputed_url_analyses (sin reejecutar ni duplicar)│
 │     ➔ OrchestratorResponse + Trazabilidad + Métricas + Informe PDF     │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Diferencia entre el Modo Local y el Modo con Agentes IA:
-| Característica | Modo Local Determinístico | Modo Orquesta de Agentes IA (Etapa 1 + Etapa 2) |
+| Característica | Modo Local Determinístico | Modo Orquesta de Agentes IA (Etapas 1, 2 y 3) |
 | :--- | :--- | :--- |
 | **Conexión de red** | **Cero (100% Offline / Zero Network)**. No realiza ninguna petición externa. | **Habilitada hacia el proveedor IA configurado** (`google-genai` / Gemini API). **Nunca visita las URLs sospechosas del mensaje.** |
 | **Requisitos de credenciales** | Ninguno. Funciona sin `.env` ni claves. | Requiere `GEMINI_API_KEY` (y `GEMINI_MODEL=gemini-3.5-flash-lite`). |
-| **Ejecución de OCR, URLs y Detección de Señales** | Local en memoria RAM (`scripts/analyzer.py`, `scripts/url_analyzer.py`, `web/ocr_service.py`). | Orquestada mediante herramientas autorizadas por el **Agente Preparador** (3 skills) y el **Agente Analizador de Mensajes** (5 skills). |
+| **Ejecución de OCR, URLs y Detección de Señales** | Local en memoria RAM (`scripts/analyzer.py`, `scripts/url_analyzer.py`, `web/ocr_service.py`). | Orquestada mediante herramientas autorizadas por el **Agente Preparador** (3 skills), el **Agente Analizador de Mensajes** (5 skills) y el **Agente Analizador de Enlaces** (1 skill). |
 | **Integración en la evaluación sin doble puntuación** | Ejecuta directamente `TextAnalyzer.analyze()`. | `TextAnalyzer.compose_analysis_from_agent_findings()` toma los hallazgos validados del `AnalizadorMensajesAgent` para las 5 categorías delegadas sin volver a correr esas detecciones y los entrega una sola vez a `RiskClassifier`. |
 | **Privacidad de datos** | El texto jamás sale de la máquina local o contenedor. | Se aplica **enmascaramiento preventivo de PII** (`agents/common/privacy.py`) al texto enviado al LLM, a los parámetros sensibles de URLs y a las respuestas de herramientas que vuelven al modelo, conservando el original en memoria local. |
 | **Fallo de API, categorías omitidas o falta de clave** | No aplica. | Si falta clave o falla una herramienta reporta `estado="error"`. Si faltan categorías obligatorias sin revisar reporta `estado="incompleto"` y riesgo `INDETERMINADO` (nunca `correcto` ni `BAJO`). |
 
 ---
 
-## 🧩 2.1. Skills y Herramientas de la Orquesta (Etapas 1 y 2)
+## 🧩 2.1. Skills y Herramientas de la Orquesta (Etapas 1, 2 y 3)
 
-El repositorio cuenta con **9 Skills** en `.agents/skills/`, cuyas instrucciones y metadatos YAML son cargados y validados programáticamente en tiempo de ejecución por `agents/common/skill_loader.py`:
+El repositorio cuenta con **10 Skills** en `.agents/skills/`, cuyas instrucciones y metadatos YAML son cargados y validados programáticamente en tiempo de ejecución por `agents/common/skill_loader.py`:
 
 | Skill (`.agents/skills/<nombre>/SKILL.md`) | Agente Autorizado | Herramienta Python Asociada | Regla / Señal Asociada (`policy.json`) | Responsabilidad Única |
 | :--- | :--- | :--- | :--- | :--- |
 | `validar-entrada` | `preparador` | `tool_validar_entrada` | — | Validar tipo de entrada (`text` o `ocr_screenshot`), longitud, formato binario (PNG/JPEG/WebP), tamaño (≤10 MB) y dimensiones (≤25 MP). |
 | `extraer-texto-captura` | `preparador` | `tool_extraer_texto_captura` | — | Preprocesar la captura y extraer texto con Tesseract OCR local + detectar distorsiones en URLs. |
-| `extraer-enlaces` | `preparador` | `tool_extraer_enlaces` | `URL-*` | Extraer URLs candidatas y auditarlas estáticamente sin visitar la red. |
+| `extraer-enlaces` | `preparador` | `tool_extraer_enlaces` | — | Extraer URLs candidatas en el texto y asignar identificadores de sesión (`URL-1`, ...) sin visitar la red ni evaluar riesgo. |
 | `detectar-urgencia` | `analizador_mensajes` | `tool_detectar_urgencia` | `ING-URGENCIA-ARTIFICIAL` (`+15 pts`) | Detectar presión temporal, plazos perentorios o apuro deliberado (`_detect_urgency`). |
 | `detectar-amenazas` | `analizador_mensajes` | `tool_detectar_amenazas` | `ING-AMENAZA-BLOQUEO` (`+35 pts`) | Detectar amenazas de bloqueo, suspensión, cierre de cuenta o embargo (`_detect_blocking_threats`). |
 | `detectar-premios` | `analizador_mensajes` | `tool_detectar_premios` | `FRA-PREMIO-INESPERADO` (`+25 pts`) | Detectar sorteos falsos, premios inesperados o beneficios señuelo (`_detect_fake_rewards`). |
 | `detectar-pedidos-datos` | `analizador_mensajes` | `tool_detectar_pedidos_datos` | `FRA-CAPTURA-CREDENCIALES` (`+40 pts`) | Detectar solicitudes de claves, contraseñas, tokens, códigos OTP/SMS o validación de identidad (`_detect_credential_harvesting`). |
 | `detectar-pedidos-dinero` | `analizador_mensajes` | `tool_detectar_pedidos_dinero` | `FRA-PAGO-ANTICIPADO` (`+35 pts`) y `FRA-DEBIN-ENGANOSO` (`+30 pts`) | Detectar pedidos de pagos previos para liberar paquetes/premios (`_detect_advance_fee`) y maniobras de DEBIN o transferencias por error (`_detect_debin_trick`). |
+| `analizar-url` | `analizador_enlaces` | `tool_analizar_url` | `REGLA-URL-01` a `REGLA-URL-05` (`+20` a `+30 pts`) | Auditar estáticamente la estructura sintáctica de las URLs extraídas (IP numérica, subdominios engañosos, Punycode/homóglifos, credenciales embebidas, TLD de bajo costo) con política Zero Network. |
 | `detective-estafas-digitales` | Agente IDE Antigravity | `scripts/worker.py` (CLI / STDIN) | Todas las reglas del motor | Manifiesto integral para el análisis directo desde el chat de Antigravity IDE. |
 
-Además, el **Agente Orquestador** (`orquestador`) tiene una lista cerrada de **3 herramientas** registradas en `agents/orquestador/agent.py`, cuyo orden obligatorio se hace cumplir en código Python:
+Además, el **Agente Orquestador** (`orquestador`) tiene una lista cerrada de **4 herramientas** registradas en `agents/orquestador/agent.py`, cuyo orden obligatorio se hace cumplir en código Python:
 1. `delegar_preparacion`: Invoca al `PreparadorAgent` y devuelve `PreparationResult`.
 2. `delegar_analisis_mensaje`: Invoca al `AnalizadorMensajesAgent` únicamente si `PreparationResult.estado == "correcto"` y devuelve `MessageAnalysisResult`.
-3. `ejecutar_motor_deterministico`: Invoca el motor determinístico únicamente si `PreparationResult.estado == "correcto"` **y** `MessageAnalysisResult.estado == "correcto"`.
+3. `delegar_analisis_enlaces`: Invoca al `AnalizadorEnlacesAgent` condicionalmente si se extrajeron enlaces en la preparación (`len(enlaces_encontrados) > 0`). Si no hay enlaces, omite la llamada registrando el motivo (`sin_enlaces`) sin tratarlo como error.
+4. `ejecutar_motor_deterministico`: Invoca el motor determinístico integrando los hallazgos validados de ambos analistas sin reejecutar las detecciones ni duplicar puntuaciones.
+
+### Contrato `UrlAnalysisResult` y evaluación de enlaces:
+El Agente Analizador de Enlaces devuelve siempre un objeto validado (`agents/common/contracts.py`) con:
+- `estado`: `"correcto"` | `"incompleto"` | `"error"`
+- `detalle_estado`: `"sin_enlaces"` | `"analizados_sin_senales"` | `"analizados_con_senales"` | `"direccion_no_analizable"` | `"enlaces_omitidos"` | `"fallo_herramienta"`
+- `intervino_agente`: Booleano que distingue si el agente analizó enlaces o si se omitió por ausencia de enlaces en el mensaje.
+- `enlaces_analizados`: Lista de `UrlItemAnalysisResult` (`url_id`, `raw_url`, `masked_url`, `estado_enlace`, `domain`, `reglas_activadas`, `senales_encontradas`, `advertencias`, `ocr_warnings`).
+- **Garantías anti-alucinación y seguridad:** Prohíbe declarar `estado == "correcto"` si se omitieron enlaces extraídos o si alguna dirección no pudo analizarse. Advierte explícitamente que la ausencia de señales sintácticas NO garantiza que un sitio sea seguro. No autocorrige enlaces dudosos extraídos por OCR.
 
 ### Contrato `MessageAnalysisResult` y cómo entran los hallazgos sin duplicarse:
 El Agente Analizador de Mensajes devuelve siempre un objeto validado (`agents/common/contracts.py`) con:
@@ -266,15 +282,15 @@ docker exec -e DETECTIVE_SKIP_DOTENV=1 -e GEMINI_API_KEY= detective-estafas-web 
 
 ---
 
-## 🧪 6. Pruebas Automatizadas (115 Tests en Total) y Validación Real
+## 🧪 6. Pruebas Automatizadas (126 Tests en Total) y Validación Real
 
-El proyecto cuenta con **115 pruebas automatizadas con `pytest`** distribuidas en 12 archivos de prueba, incluyendo **31 pruebas en `tests/test_agents_orchestration.py`** que cubren las Etapas 1 y 2:
+El proyecto cuenta con **126 pruebas automatizadas con `pytest`** distribuidas en 12 archivos de prueba, incluyendo **42 pruebas en `tests/test_agents_orchestration.py`** que cubren las Etapas 1, 2 y 3:
 
 ```bash
 .venv\Scripts\python.exe -m pytest -v
 ```
 
-### Escenarios verificados en `tests/test_agents_orchestration.py` (31 tests):
+### Escenarios verificados en `tests/test_agents_orchestration.py` (42 tests):
 1. **Carga programática y autorización de las 8 skills de agentes:** Verifica `validar-entrada`, `extraer-texto-captura`, `extraer-enlaces` (Preparador) y `detectar-urgencia`, `detectar-amenazas`, `detectar-premios`, `detectar-pedidos-datos`, `detectar-pedidos-dinero` (Analizador de Mensajes), bloqueando accesos cruzados entre agentes y *path traversal* (4 tests).
 2. **Cada una de las 5 categorías con y sin hallazgos:** Verifica `urgencia` (`ING-URGENCIA-ARTIFICIAL`), `amenazas` (`ING-AMENAZA-BLOQUEO`), `premios` (`FRA-PREMIO-INESPERADO`), `pedidos_datos` (`FRA-CAPTURA-CREDENCIALES`) y `pedidos_dinero` (`FRA-PAGO-ANTICIPADO` y `FRA-DEBIN-ENGANOSO`), comprobando que las demás categorías queden en `revisada_sin_hallazgos` y que un mensaje benigno deje las 5 en `revisada_sin_hallazgos` (7 tests).
 3. **Mensajes con múltiples señales simultáneas:** Verifica la detección combinada de las 5 categorías en un solo turno paralelo de herramientas (1 test).
@@ -285,10 +301,10 @@ El proyecto cuenta con **115 pruebas automatizadas con `pytest`** distribuidas e
 8. **Controles de seguridad en código, orden de ejecución, privacidad de URLs/snippets y métricas de consumo:** Verifica el bloqueo de llamadas fuera de orden en el Orquestador, el rechazo de herramientas o argumentos no autorizados en el Analizador de Mensajes, la sanitización de credenciales/PII en URLs (`sanitize_url_for_external_llm`) y fragmentos de herramientas (`sanitize_snippets_for_external_llm`), y el conteo acumulado de llamadas y tokens en `usage_metrics` (4 tests).
 9. **Prueba de integración real contra la API de Google Gemini (`test_real_gemini_api_orchestration_when_configured`):** Ejecutada con `gemini-3.5-flash-lite` y datos ficticios (`PASSED`), comprobando la delegación real `Orquestador ➔ Preparador ➔ Analizador de Mensajes (5 skills en paralelo) ➔ Motor Determinístico`, con `9` llamadas totales al modelo, `10` llamadas a herramientas y `24.208` tokens acumulados (`23.453` de entrada + `755` de salida).
 
-### Resumen de Verificación Efectivamente Realizada (Etapa 2):
-- **Suite determinística y con cliente LLM simulado (`pytest`):** `114 passed, 1 skipped` ejecutada tanto en el entorno virtual local de Windows (`.venv`) como dentro del contenedor Docker (`docker exec -e DETECTIVE_SKIP_DOTENV=1 -e GEMINI_API_KEY= detective-estafas-web pytest -v`).
-- **Integración en vivo con Google Gemini API (`gemini-3.5-flash-lite`):** Verificada mediante `test_real_gemini_api_orchestration_when_configured` (`1 passed`), comprobando en las trazas la delegación real `Orquestador ➔ Preparador ➔ Analizador de Mensajes ➔ Motor Determinístico`, la revisión de las 5 categorías obligatorias y el consumo acumulado (`9` llamadas al modelo, `10` llamadas a herramientas y `24.208` tokens totales).
-- **Comprobación manual en la aplicación (`http://localhost:8502`):** Verificada manualmente por el usuario sobre la aplicación en ejecución con la Etapa 2 integrada, confirmando su correcto funcionamiento.
+### Resumen de Verificación Efectivamente Realizada (Etapa 3):
+- **Suite determinística y con cliente LLM simulado (`pytest`):** `125 passed, 1 deselected` en 4.68s en el entorno virtual local de Windows (`.venv`).
+- **Integración en vivo con Google Gemini API (`gemini-3.5-flash-lite`):** Verificada mediante `test_real_gemini_api_orchestration_when_configured` (`1 passed` en 19.06s), comprobando en las trazas la participación de los 4 agentes (`orquestador`, `preparador`, `analizador_mensajes`, `analizador_enlaces`) y sus herramientas en orden estricto, con reintento transitorio y consumo acumulado transparente (`12` llamadas LLM, `12` llamadas a herramientas y `32.368` tokens acumulados).
+- **Comprobación manual en la aplicación (`http://localhost:8502`):** Lista para verificación manual por el usuario sobre la aplicación web en ejecución con la Etapa 3 integrada.
 
 ---
 

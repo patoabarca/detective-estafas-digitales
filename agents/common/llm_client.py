@@ -109,9 +109,9 @@ def get_agent_runtime_status() -> Dict[str, Any]:
     }
 
 
-def create_gemini_client(api_key: Optional[str] = None, timeout_ms: int = 15000) -> Any:
+def create_gemini_client(api_key: Optional[str] = None, timeout_ms: int = 30000) -> Any:
     """
-    Inicializa el cliente oficial `google.genai.Client` con timeout acotado.
+    Inicializa el cliente oficial `google.genai.Client` con timeout acotado (30s).
     Nunca registra ni expone la clave en mensajes de error.
     """
     load_local_env_file()
@@ -218,11 +218,34 @@ def run_agent_tool_loop(
 
         llm_t0 = time.monotonic()
         try:
-            response = client.models.generate_content(
-                model=resolved_model,
-                contents=contents,
-                config=config,
-            )
+            # Reintento único ante fallos transitorios de red / deadline de la API (503/504)
+            response = None
+            last_transient_exc: Optional[Exception] = None
+            for attempt in range(2):
+                try:
+                    response = client.models.generate_content(
+                        model=resolved_model,
+                        contents=contents,
+                        config=config,
+                    )
+                    break
+                except Exception as call_exc:
+                    exc_str = str(call_exc)
+                    is_transient = (
+                        "504" in exc_str
+                        or "503" in exc_str
+                        or "DEADLINE_EXCEEDED" in exc_str
+                        or "UNAVAILABLE" in exc_str
+                    )
+                    if is_transient and attempt == 0:
+                        last_transient_exc = call_exc
+                        time.sleep(1.5)
+                        continue
+                    raise
+
+            if response is None and last_transient_exc:
+                raise last_transient_exc
+
             llm_ms = (time.monotonic() - llm_t0) * 1000
             llm_calls_count += 1
 

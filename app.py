@@ -316,41 +316,74 @@ def render_results_section(report: Dict[str, Any]) -> None:
         orch_data = report["agent_orchestration"]
         prep_data = orch_data.get("preparation") or {}
         msg_data = orch_data.get("message_analysis") or {}
+        url_data = orch_data.get("url_analysis") or {}
         usage_data = orch_data.get("usage_metrics") or {}
         privacy_data = orch_data.get("privacy_notice") or {}
         trace_list = orch_data.get("trace_events") or []
 
-        with st.expander("🤖 Resultado del Agente Preparador y Analizador de Mensajes (Etapas 1 y 2)", expanded=True):
+        with st.expander("🤖 Resultado de la Orquesta de Agentes (Etapas 1, 2 y 3)", expanded=True):
             st.markdown(
                 f"- **Modo de ejecución:** `{orch_data.get('execution_mode')}` (Modelo: `{orch_data.get('model_used')}`)  \n"
                 f"- **Estado del Agente Preparador:** `{prep_data.get('estado', '').upper()}` "
                 f"(Detalle: `{prep_data.get('detalle_estado', '')}`)  \n"
                 f"- **Skills del Preparador:** `{', '.join(prep_data.get('skills_cargadas', []))}`  \n"
                 f"- **Herramientas del Preparador invocadas:** `{', '.join(prep_data.get('herramientas_invocadas', []))}`  \n"
-                f"- **Enlaces encontrados por Preparador ({len(prep_data.get('enlaces_encontrados', []))}):** "
+                f"- **Enlaces extraídos por Preparador ({len(prep_data.get('enlaces_encontrados', []))}):** "
                 f"{', '.join(f'`{u}`' for u in prep_data.get('enlaces_encontrados', [])) or '*Ninguno (`sin_enlaces`)*'}"
             )
             if msg_data:
                 st.markdown("---")
                 st.markdown(
                     f"- **Estado del Agente Analizador de Mensajes:** `{msg_data.get('estado', '').upper()}`  \n"
-                    f"- **Skills del Analizador cargadas:** `{', '.join(msg_data.get('skills_cargadas', []))}`  \n"
+                    f"- **Skills del Analizador de Mensajes:** `{', '.join(msg_data.get('skills_cargadas', []))}`  \n"
                     f"- **Categorías revisadas ({len(msg_data.get('categorias_revisadas', []))}/5):** "
                     f"`{', '.join(msg_data.get('categorias_revisadas', [])) or 'Ninguna'}`  \n"
                     f"- **Categorías revisadas sin hallazgos:** "
                     f"`{', '.join(msg_data.get('categorias_sin_hallazgos', [])) or 'Ninguna'}`  \n"
                     f"- **Categorías no revisadas:** "
                     f"`{', '.join(msg_data.get('categorias_no_revisadas', [])) or 'Ninguna (todas revisadas)'}`  \n"
-                    f"- **Señales detectadas por el Analizador ({len(msg_data.get('senales_encontradas', []))}):** "
+                    f"- **Señales detectadas en el mensaje ({len(msg_data.get('senales_encontradas', []))}):** "
                     f"`{', '.join(s.get('id_senal', '') for s in msg_data.get('senales_encontradas', [])) or 'Ninguna'}`"
                 )
+            if url_data:
+                st.markdown("---")
+                intervino_url = bool(url_data.get("intervino_agente", False))
+                st.markdown(
+                    f"- **Agente Analizador de Enlaces (Etapa 3):** "
+                    f"{'`INTERVINO`' if intervino_url else '`OMITIDO (SIN ENLACES)`'}  \n"
+                    f"- **Estado del análisis de enlaces:** `{url_data.get('estado', '').upper()}` "
+                    f"(Detalle: `{url_data.get('detalle_estado', '')}`)  \n"
+                    f"- **Enlaces procesados:** `{url_data.get('cantidad_enlaces_procesados', 0)}` de "
+                    f"`{url_data.get('cantidad_enlaces_extraidos', 0)}`"
+                )
+                if not intervino_url and url_data.get("motivo_omision"):
+                    st.markdown(f"- **Motivo de omisión:** {url_data.get('motivo_omision')}")
+                if intervino_url:
+                    st.markdown(
+                        f"- **Skills del Analizador de Enlaces:** `{', '.join(url_data.get('skills_cargadas', []))}`  \n"
+                        f"- **Herramientas invocadas:** `{', '.join(url_data.get('herramientas_invocadas', []))}`"
+                    )
+                    for item in url_data.get("enlaces_analizados", []):
+                        reglas_str = ", ".join(item.get("reglas_activadas", [])) or "Sin reglas de riesgo activadas"
+                        st.markdown(
+                            f"  - `{item.get('url_id')}` (`{item.get('domain')}`) → Estado: `{item.get('estado_enlace')}` "
+                            f"| Reglas: `{reglas_str}`"
+                        )
             if usage_data:
+                st.markdown("---")
                 st.markdown(
                     f"- **Consumo acumulado de la solicitud:** `{usage_data.get('llm_calls_total', 0)}` llamadas al modelo, "
                     f"`{usage_data.get('tool_calls_total', 0)}` llamadas a herramientas, "
                     f"`{usage_data.get('total_tokens', 0)}` tokens totales "
                     f"(`{usage_data.get('prompt_tokens_total', 0)}` entrada + `{usage_data.get('output_tokens_total', 0)}` salida)."
                 )
+                by_agent = usage_data.get("by_agent") or {}
+                if by_agent:
+                    agent_metrics_parts = [
+                        f"`{ag_name}`: {ag_m.get('llm_calls', 0)} llamadas LLM / {ag_m.get('tool_calls', 0)} tools / {ag_m.get('total_tokens', 0)} tokens"
+                        for ag_name, ag_m in by_agent.items()
+                    ]
+                    st.markdown(f"- **Desglose por agente:** {' • '.join(agent_metrics_parts)}")
             if prep_data.get("advertencias"):
                 st.markdown("**Advertencias de preparación/lectura:**")
                 for w in prep_data["advertencias"]:
@@ -358,6 +391,10 @@ def render_results_section(report: Dict[str, Any]) -> None:
             if msg_data.get("advertencias"):
                 st.markdown("**Advertencias del analizador de mensajes:**")
                 for w in msg_data["advertencias"]:
+                    st.markdown(f"  - ⚠️ {w}")
+            if url_data.get("advertencias"):
+                st.markdown("**Advertencias del analizador de enlaces:**")
+                for w in url_data["advertencias"]:
                     st.markdown(f"  - ⚠️ {w}")
             if orch_data.get("orchestrator_summary"):
                 st.markdown(f"**Síntesis del Agente Orquestador:** {orch_data.get('orchestrator_summary')}")

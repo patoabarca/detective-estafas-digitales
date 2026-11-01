@@ -2,10 +2,10 @@
 Contratos de Datos y Validadores Estructurados para Agentes y Herramientas.
 
 Define y valida los formatos de entrada, llamadas a herramientas, resultados del
-Agente Preparador, resultados del Agente Analizador de Mensajes y respuestas del
-Agente Orquestador.
+Agente Preparador, resultados del Agente Analizador de Mensajes, resultados del
+Agente Analizador de Enlaces y respuestas del Agente Orquestador.
 
-Cumple con los requerimientos de las Etapas 1 y 2:
+Cumple con los requerimientos de las Etapas 1, 2 y 3:
 - El preparador devuelve `PreparationResult`:
   - estado: "correcto" | "incompleto" | "error"
   - texto_extraido_o_recibido: str
@@ -17,6 +17,14 @@ Cumple con los requerimientos de las Etapas 1 y 2:
   - categorias_revisadas: List[str]
   - estado_categorias: Dict[str, str] diferenciando "revisada_con_hallazgos", "revisada_sin_hallazgos" y "no_revisada"
   - senales_encontradas: List[MessageSignalFinding] (con id estable, categoría, fragmento verificado contra el texto analizado)
+  - advertencias: List[str]
+- El analizador de enlaces devuelve `UrlAnalysisResult`:
+  - estado: "correcto" | "incompleto" | "error"
+  - detalle_estado: "sin_enlaces" | "analizados_sin_senales" | "analizados_con_senales" | "direccion_no_analizable" | "enlaces_omitidos" | "fallo_herramienta"
+  - intervino_agente: bool
+  - cantidad_enlaces_extraidos: int
+  - cantidad_enlaces_procesados: int
+  - enlaces_analizados: List[UrlItemAnalysisResult]
   - advertencias: List[str]
 """
 
@@ -56,6 +64,32 @@ VALID_CATEGORY_STATUSES = {
     "revisada_con_hallazgos",
     "revisada_sin_hallazgos",
     "no_revisada",
+}
+
+VALID_URL_RULE_IDS = {
+    "REGLA-URL-01",
+    "REGLA-URL-02",
+    "REGLA-URL-03",
+    "REGLA-URL-04",
+    "REGLA-URL-05",
+    "INFO-URL-HTTP",
+    "INFO-URL-HTTPS",
+    "INFO-URL-SENSITIVE-PARAMS",
+}
+VALID_URL_ITEM_STATUSES = {
+    "analizado_con_senales",
+    "analizado_sin_senales",
+    "direccion_no_analizable",
+    "no_procesado",
+    "error_herramienta",
+}
+VALID_URL_ANALYSIS_DETAIL_CODES = {
+    "sin_enlaces",
+    "analizados_sin_senales",
+    "analizados_con_senales",
+    "direccion_no_analizable",
+    "enlaces_omitidos",
+    "fallo_herramienta",
 }
 
 
@@ -335,6 +369,216 @@ class MessageAnalysisResult:
 
 
 @dataclass
+class UrlSignalFinding:
+    """
+    Contrato validado para una señal detectada sobre una URL por el Agente Analizador de Enlaces.
+    """
+    id_regla: str
+    tipo_senal: str
+    evidencia: str
+    descripcion: str
+
+    def validate(self, raw_url: Optional[str] = None, domain: Optional[str] = None) -> None:
+        if self.id_regla not in VALID_URL_RULE_IDS:
+            raise ContractValidationError(
+                f"Identificador de regla URL inválido: '{self.id_regla}'. "
+                f"Permitidos: {sorted(VALID_URL_RULE_IDS)}"
+            )
+        if not isinstance(self.evidencia, str) or not self.evidencia.strip():
+            raise ContractValidationError(
+                f"La señal '{self.id_regla}' debe incluir evidencia concreta no vacía."
+            )
+        if not isinstance(self.descripcion, str) or not self.descripcion.strip():
+            raise ContractValidationError(
+                f"La señal '{self.id_regla}' debe incluir descripción no vacía."
+            )
+        if raw_url is not None and self.evidencia not in raw_url and (not domain or self.evidencia not in domain):
+            raise ContractValidationError(
+                f"Evidencia de URL inválida en '{self.id_regla}': '{self.evidencia}' no corresponde a '{raw_url}'."
+            )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class UrlItemAnalysisResult:
+    """
+    Resultado estructurado del análisis estático de un enlace individual.
+    Conserva los campos exactos requeridos por `RiskClassifier` y `ReportGenerator`
+    (`raw_url`, `scheme`, `domain`, `port`, `is_ip_address`, `has_punycode`, `has_userinfo`, `findings`).
+    """
+    url_id: str
+    raw_url: str
+    masked_url: str
+    estado_enlace: Literal[
+        "analizado_con_senales",
+        "analizado_sin_senales",
+        "direccion_no_analizable",
+        "no_procesado",
+        "error_herramienta",
+    ]
+    scheme: str = "desconocido"
+    domain: str = "no_identificado"
+    port: Optional[int] = None
+    is_ip_address: bool = False
+    has_punycode: bool = False
+    has_userinfo: bool = False
+    findings: List[str] = field(default_factory=list)
+    senales_encontradas: List[UrlSignalFinding] = field(default_factory=list)
+    reglas_activadas: List[str] = field(default_factory=list)
+    advertencias: List[str] = field(default_factory=list)
+    ocr_warnings: List[Dict[str, str]] = field(default_factory=list)
+
+    def validate(self, allowed_raw_urls: Optional[List[str]] = None) -> None:
+        if not isinstance(self.url_id, str) or not self.url_id.strip():
+            raise ContractValidationError("Cada enlace debe tener un identificador 'url_id' válido.")
+        if not isinstance(self.raw_url, str) or not self.raw_url.strip():
+            raise ContractValidationError(f"El enlace '{self.url_id}' carece de 'raw_url'.")
+        if self.estado_enlace not in VALID_URL_ITEM_STATUSES:
+            raise ContractValidationError(
+                f"Estado de enlace inválido en '{self.url_id}': '{self.estado_enlace}'."
+            )
+        if allowed_raw_urls is not None and self.raw_url not in allowed_raw_urls:
+            raise ContractValidationError(
+                f"URL inventada o sustituida rechazada en '{self.url_id}': '{self.raw_url}' "
+                f"no pertenece a las direcciones extraídas de la sesión."
+            )
+        for sig in self.senales_encontradas:
+            if not isinstance(sig, UrlSignalFinding):
+                raise ContractValidationError("Los elementos de 'senales_encontradas' deben ser UrlSignalFinding.")
+            sig.validate(raw_url=self.raw_url, domain=self.domain)
+
+    def to_engine_url_dict(self) -> Dict[str, Any]:
+        """Devuelve el diccionario exacto que esperan `RiskClassifier` y `ReportGenerator`."""
+        return {
+            "url_id": self.url_id,
+            "raw_url": self.raw_url,
+            "scheme": self.scheme,
+            "domain": self.domain,
+            "port": self.port,
+            "is_ip_address": self.is_ip_address,
+            "has_punycode": self.has_punycode,
+            "has_userinfo": self.has_userinfo,
+            "findings": list(self.findings),
+            "rule_ids": list(self.reglas_activadas),
+            "status": self.estado_enlace,
+            "ocr_warnings": list(self.ocr_warnings),
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        self.validate()
+        data = asdict(self)
+        data["senales_encontradas"] = [s.to_dict() for s in self.senales_encontradas]
+        return data
+
+
+@dataclass
+class UrlAnalysisResult:
+    """
+    Contrato estricto de salida del Agente Analizador de Enlaces (Etapa 3).
+
+    Garantiza:
+    - Estado: "correcto" | "incompleto" | "error".
+    - Diferenciación explícita entre:
+      * "sin_enlaces": no había enlaces en el mensaje (se omite el agente sin error).
+      * "analizados_sin_senales": se analizaron todos los enlaces y no se hallaron señales de riesgo
+        (con advertencia explícita de que esto NO garantiza legitimidad).
+      * "analizados_con_senales": se analizaron todos los enlaces y se detectaron señales.
+      * "direccion_no_analizable": alguna dirección estaba malformada o sin host identificable (`estado="incompleto"`).
+      * "enlaces_omitidos": no se procesaron todos los enlaces extraídos (`estado="incompleto"`).
+      * "fallo_herramienta": ocurrió un error técnico (`estado="error"`).
+    - Prohibición de marcar `estado == "correcto"` si se omitieron enlaces extraídos o si alguna URL no pudo analizarse.
+    """
+    estado: Literal["correcto", "incompleto", "error"]
+    detalle_estado: Literal[
+        "sin_enlaces",
+        "analizados_sin_senales",
+        "analizados_con_senales",
+        "direccion_no_analizable",
+        "enlaces_omitidos",
+        "fallo_herramienta",
+    ]
+    intervino_agente: bool = True
+    motivo_omision: Optional[str] = None
+    cantidad_enlaces_extraidos: int = 0
+    cantidad_enlaces_procesados: int = 0
+    enlaces_analizados: List[UrlItemAnalysisResult] = field(default_factory=list)
+    enlaces_omitidos: List[str] = field(default_factory=list)
+    advertencias: List[str] = field(default_factory=list)
+    mensaje_error: Optional[str] = None
+    skills_cargadas: List[str] = field(default_factory=list)
+    herramientas_invocadas: List[str] = field(default_factory=list)
+
+    def validate(self, expected_urls: Optional[List[str]] = None) -> None:
+        if self.estado not in VALID_PREPARATION_STATES:
+            raise ContractValidationError(
+                f"Estado de análisis de enlaces inválido: '{self.estado}'."
+            )
+        if self.detalle_estado not in VALID_URL_ANALYSIS_DETAIL_CODES:
+            raise ContractValidationError(
+                f"Detalle de estado de análisis de enlaces inválido: '{self.detalle_estado}'."
+            )
+        if self.cantidad_enlaces_extraidos < 0 or self.cantidad_enlaces_procesados < 0:
+            raise ContractValidationError("Las cantidades de enlaces no pueden ser negativas.")
+
+        # Prohibido declarar completo ("correcto") un análisis que omitió enlaces
+        if self.estado == "correcto":
+            if self.enlaces_omitidos:
+                raise ContractValidationError(
+                    "Inconsistencia de contrato: el análisis de enlaces no puede tener estado='correcto' "
+                    f"cuando existen enlaces omitidos: {self.enlaces_omitidos}."
+                )
+            if self.cantidad_enlaces_procesados < self.cantidad_enlaces_extraidos:
+                raise ContractValidationError(
+                    "Inconsistencia de contrato: el análisis de enlaces no puede ser 'correcto' si "
+                    f"se procesaron {self.cantidad_enlaces_procesados} de {self.cantidad_enlaces_extraidos} enlaces."
+                )
+            if any(
+                item.estado_enlace in ("direccion_no_analizable", "no_procesado", "error_herramienta")
+                for item in self.enlaces_analizados
+            ):
+                raise ContractValidationError(
+                    "Inconsistencia de contrato: un enlace con estado 'direccion_no_analizable', 'no_procesado' "
+                    "o 'error_herramienta' impide que el resultado global sea 'correcto'."
+                )
+
+        if self.detalle_estado in ("direccion_no_analizable", "enlaces_omitidos") and self.estado != "incompleto":
+            raise ContractValidationError(
+                f"Cuando detalle_estado es '{self.detalle_estado}', el estado debe ser 'incompleto'."
+            )
+        if self.detalle_estado == "fallo_herramienta" and self.estado != "error":
+            raise ContractValidationError(
+                "Cuando detalle_estado es 'fallo_herramienta', el estado debe ser 'error'."
+            )
+
+        for item in self.enlaces_analizados:
+            if not isinstance(item, UrlItemAnalysisResult):
+                raise ContractValidationError(
+                    "Todos los elementos de 'enlaces_analizados' deben ser UrlItemAnalysisResult."
+                )
+            item.validate(allowed_raw_urls=expected_urls)
+
+        if expected_urls is not None and self.estado == "correcto" and self.cantidad_enlaces_extraidos > 0:
+            analyzed_raw = [it.raw_url for it in self.enlaces_analizados]
+            if analyzed_raw != list(expected_urls):
+                raise ContractValidationError(
+                    "Inconsistencia de contrato: la lista de enlaces analizados no coincide con los enlaces "
+                    "extraídos de la sesión."
+                )
+
+    def to_engine_url_analyses(self) -> List[Dict[str, Any]]:
+        """Devuelve la lista de diccionarios para `RiskClassifier` y `ReportGenerator` sin re-ejecutar `url_analyzer`."""
+        return [item.to_engine_url_dict() for item in self.enlaces_analizados]
+
+    def to_dict(self) -> Dict[str, Any]:
+        self.validate()
+        data = asdict(self)
+        data["enlaces_analizados"] = [it.to_dict() for it in self.enlaces_analizados]
+        return data
+
+
+@dataclass
 class OrchestratorResponse:
     """
     Contrato de salida del Agente Orquestador hacia la aplicación Streamlit.
@@ -345,6 +589,7 @@ class OrchestratorResponse:
     model_used: str = ""
     preparation: Optional[PreparationResult] = None
     message_analysis: Optional[MessageAnalysisResult] = None
+    url_analysis: Optional[UrlAnalysisResult] = None
     report: Optional[Dict[str, Any]] = None
     orchestrator_summary: str = ""
     privacy_notice: Dict[str, Any] = field(default_factory=dict)
@@ -365,13 +610,20 @@ class OrchestratorResponse:
                 else None
             )
             self.message_analysis.validate(analyzed_text=ref_text)
-        # Garantía de seguridad: si la preparación quedó incompleta (ej. captura ilegible),
+        if self.url_analysis is not None:
+            expected_urls = (
+                self.preparation.enlaces_encontrados
+                if self.preparation is not None
+                else None
+            )
+            self.url_analysis.validate(expected_urls=expected_urls)
+        # Garantía de seguridad: si la preparación o algún análisis quedó incompleto,
         # el reporte NUNCA puede clasificar como RIESGO BAJO.
         if self.report and isinstance(self.report, dict):
             risk_level = self.report.get("risk_assessment", {}).get("level")
             if self.status == "incomplete" and risk_level == "BAJO":
                 raise ContractValidationError(
-                    "Violación de seguridad: una entrada incompleta/ilegible no puede evaluarse como RIESGO BAJO."
+                    "Violación de seguridad: una entrada o análisis incompleto no puede evaluarse como RIESGO BAJO."
                 )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -381,13 +633,15 @@ class OrchestratorResponse:
             result["preparation"] = self.preparation.to_dict()
         if self.message_analysis is not None:
             result["message_analysis"] = self.message_analysis.to_dict()
+        if self.url_analysis is not None:
+            result["url_analysis"] = self.url_analysis.to_dict()
         return result
 
 
 def validate_tool_arguments(
     tool_name: str,
     args: Any,
-    allowed_params: Dict[str, type],
+    allowed_params: Dict[str, Any],
     required_params: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
@@ -426,8 +680,9 @@ def validate_tool_arguments(
                 f"Tipo inválido para '{k}' en '{tool_name}': se esperaba int, se recibió bool."
             )
         if not isinstance(v, expected_type):
+            type_name = getattr(expected_type, "__name__", str(expected_type))
             raise ContractValidationError(
-                f"Tipo inválido para '{k}' en '{tool_name}': se esperaba {expected_type.__name__}, "
+                f"Tipo inválido para '{k}' en '{tool_name}': se esperaba {type_name}, "
                 f"se recibió {type(v).__name__}."
             )
         validated[k] = v
