@@ -375,9 +375,17 @@ El proyecto cuenta con **144 pruebas automatizadas con `pytest`** distribuidas e
 
 ---
 
-## 🎓 8. Materiales Oficiales para la Defensa Oral
+## 🎓 8. Materiales Oficiales para la Defensa Oral y Presentación
 
-- **Presentación Oficial (PowerPoint):** [Detective_Estafas_Digitales_Presentacion_FINAL.pptx](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/Detective_Estafas_Digitales_Presentacion_FINAL.pptx)
-- **Guion de Defensa Oral (PDF):** [Guion_Defensa_Oral_Detective_Estafas_FINAL.pdf](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/Guion_Defensa_Oral_Detective_Estafas_FINAL.pdf)
-- **Guion de Defensa Oral (Word):** [Guion_Defensa_Oral_Detective_Estafas_FINAL.docx](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/Guion_Defensa_Oral_Detective_Estafas_FINAL.docx)
-- **Manual de la Aplicación Web:** [docs/manual_web.md](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/docs/manual_web.md)
+Los materiales definitivos de presentación y defensa se encuentran organizados y versionados en [docs/presentacion/](docs/presentacion/):
+
+- **Presentación Principal de Arquitectura (PowerPoint):** [docs/presentacion/Detective_Arquitectura_Final.pptx](docs/presentacion/Detective_Arquitectura_Final.pptx)  
+  *Cubre la arquitectura integral, el flujo de mensajes en la orquesta, el esquema híbrido (Python determinístico + LLM), despliegue en Docker y controles de seguridad.*
+- **Presentación de Orquesta de Agentes y Skills (PowerPoint):** [docs/presentacion/Orquesta_Agentes_y_Skills.pptx](docs/presentacion/Orquesta_Agentes_y_Skills.pptx)  
+  *Exposición especializada sobre los 5 agentes del sistema (Orquestador, Preparador, Analizador de Mensajes, Analizador de Enlaces y Evaluador) y sus 15 skills.*
+- **Guía de Arquitectura y Funcionamiento (Word):** [docs/presentacion/Detective_Guia_Arquitectura.docx](docs/presentacion/Detective_Guia_Arquitectura.docx)  
+  *Documento explicativo sobre el funcionamiento del sistema, categorización de riesgo, reglas heurísticas y salvaguardas.*
+- **Manual de la Aplicación Web:** [docs/manual_web.md](docs/manual_web.md)  
+  *Guía operativa para el uso de la interfaz web interactiva.*
+
+*(Nota: Los materiales preliminares de la primera etapa fueron consolidados y reemplazados por estos entregables definitivos).*

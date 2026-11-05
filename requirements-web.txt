@@ -10,10 +10,8 @@ streamlit>=1.40.0
 pillow>=10.0.0
 pytesseract>=0.3.10
 
-# Generación de informes PDF y documentos de defensa
+# Generación de informes PDF en memoria (ReportLab)
 reportlab>=4.0.0
-python-docx>=1.1.0
-python-pptx>=1.0.0
 
 # Integración con Modelos de IA para Orquesta de Agentes (Etapa 1: Google Gemini API)
 google-genai>=1.0.0
