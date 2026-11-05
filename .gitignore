@@ -33,12 +33,16 @@ credentials.json
 output/
 reports/
 
-# Presentation and defense documents & generators
-generate_presentation*.py
-generate_defense_guide*.py
+# Presentation and defense documents
 *.pptx
 *.docx
 *Guion_Defensa*
 *Presentacion*
 Detective_Estafas_Digitales_Guion_Defensa*
 Detective_Estafas_Digitales_Presentacion*
+
+# Entregables definitivos permitidos en docs/presentacion/
+!docs/presentacion/
+!docs/presentacion/*.pptx
+!docs/presentacion/*.docx
+!docs/presentacion/*.pdf

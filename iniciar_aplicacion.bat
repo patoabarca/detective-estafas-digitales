@@ -14,7 +14,7 @@ if not "%PROJECT_DIR:~80,1%"=="" set "VENV_DIR=%LOCALAPPDATA%\DetectiveEstafasDi
 set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
 set "REQ_FILE=requirements-web.txt"
 set "REQ_COPY=%VENV_DIR%\requirements-web.installed"
-set "IMPORT_CHECK=import streamlit, PIL, pytesseract, reportlab, docx, pptx"
+set "IMPORT_CHECK=import streamlit, PIL, pytesseract, reportlab"
 set "REBUILT=0"
 
 echo ===================================================
