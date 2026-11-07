@@ -3,11 +3,14 @@ Pruebas Automatizadas de Validación del Piloto del Analizador de Enlaces
 (Rama refactor/piloto-analizador-enlaces)
 
 Objetivos de esta suite:
-1. Validar la reducción cuantificable del contexto (instrucción de sistema)
-   entre la versión v2.0-orquesta-presentada (commit 454601d) y la versión modularizada.
-2. Comprobar la equivalencia funcional del contrato en casos sintéticos reproducibles.
+1. Validar la reducción cuantificable del contexto (instrucción de sistema efectiva)
+   producida por `build_system_instruction()` entre la versión base v2.0-orquesta-presentada
+   (commit 454601d) y la versión modularizada del piloto.
+2. Comprobar la equivalencia funcional del contrato en casos sintéticos reproducibles,
+   comparando contra los resultados de referencia congelados del commit base 454601d
+   de manera 100% independiente de Git (apto para entornos Docker sin historial).
 3. Verificar el enmascaramiento estricto de credenciales y parámetros sensibles en
-   la construcción de prompts y en los intercambios con el modelo (Cero Fuga de Secretos).
+   la construcción de prompts y en los intercambios con el modelo (en los recorridos probados).
 4. Verificar la omisión completa del Analizador de Enlaces en el flujo del Orquestador
    cuando no hay URLs, contrastándolo con la invocación directa y aislada del especialista.
 """
@@ -20,18 +23,16 @@ import pytest
 
 from agents.analizador_enlaces.agent import (
     AnalizadorEnlacesAgent,
-    ANALIZADOR_ENLACES_ALLOWED_SKILLS,
-)
-from agents.analizador_enlaces.prompts import (
     ANALIZADOR_ENLACES_AGENT_NAME,
+    ANALIZADOR_ENLACES_ALLOWED_SKILLS,
     ANALIZADOR_ENLACES_BASE_INSTRUCTIONS,
-    build_untrusted_urls_prompt,
 )
-from agents.common.privacy import sanitize_url_for_external_llm
-from agents.common.skill_loader import load_skills_for_agent
-from agents.common.traceability import AgentTracer
+from agents.analizador_enlaces.prompts import build_untrusted_urls_prompt
 from agents.common.contracts import AgentInputRequest
+from agents.common.privacy import sanitize_url_for_external_llm
+from agents.common.traceability import AgentTracer
 from agents.orquestador.agent import OrquestadorAgent
+from agents.tools.preparation_tools import PreparationSessionContext
 from tests.test_agents_orchestration import (
     make_standard_orquestador_mock_client,
     make_standard_preparador_mock_client,
@@ -39,7 +40,6 @@ from tests.test_agents_orchestration import (
     make_standard_analizador_enlaces_mock_client,
     make_standard_evaluador_mock_client,
 )
-from agents.tools.preparation_tools import PreparationSessionContext
 
 
 # =============================================================================
@@ -93,106 +93,182 @@ class ScriptedMockLLMClient:
 
 
 # =============================================================================
-# 1. Medición de Reducción de Contexto y Equivalencia Funcional
+# 1. Medición Real del Contexto Efectivo de build_system_instruction()
 # =============================================================================
 
-# Línea base congelada del commit 454601ddb6259bcec2b77f5ee6478649dd9f183f:
-# - Texto plano original (raw string): 5.515 caracteres, 5.592 bytes UTF-8
-# - JSON serializado con escape ASCII (ensure_ascii=True): 5.960 caracteres
-BASELINE_RAW_CHARS = 5515
-BASELINE_RAW_BYTES = 5592
-BASELINE_JSON_ESCAPED_CHARS = 5960
-
-
-def _load_base_agent_class():
-    """
-    Carga dinámicamente en memoria la clase AnalizadorEnlacesAgent del commit base 454601d
-    para asegurar que las pruebas de equivalencia comparen contra la versión base original
-    y no únicamente contra expectativas estáticas o contra la nueva implementación.
-    """
-    import subprocess
-    import types
-    try:
-        base_code = subprocess.check_output(
-            ["git", "show", "454601d:agents/analizador_enlaces/agent.py"],
-            text=True,
-            encoding="utf-8",
-        )
-        mod = types.ModuleType("base_agent_mod")
-        exec(compile(base_code, "base_agent_mod", "exec"), mod.__dict__)
-        return mod.AnalizadorEnlacesAgent
-    except Exception:
-        return None
+# Medición real obtenida de `base_agent.build_system_instruction()` sobre el commit base:
+# Commit de origen: 454601ddb6259bcec2b77f5ee6478649dd9f183f
+BASELINE_BUILD_SYSTEM_INSTRUCTION_CHARS: int = 5951
+BASELINE_BUILD_SYSTEM_INSTRUCTION_BYTES: int = 6036
 
 
 def test_pilot_system_instruction_context_reduction():
     """
-    Verifica que la modularización del agente y el aligeramiento de SKILL.md
-    reduzcan la instrucción de sistema más de un 40% en caracteres y bytes UTF-8,
-    distinguiendo texto plano original de la serialización JSON con escape ASCII.
+    Verifica que la salida efectiva de build_system_instruction() en el agente piloto
+    reduzca el contexto de instrucción más de un 40% en caracteres y bytes UTF-8
+    frente a la salida efectiva de build_system_instruction() del commit base 454601d.
     """
-    skills = load_skills_for_agent(ANALIZADOR_ENLACES_AGENT_NAME, ANALIZADOR_ENLACES_ALLOWED_SKILLS)
-    skill_content = "\n\n".join(s.instructions_markdown for s in skills.values())
-    current_system_instruction = f"{ANALIZADOR_ENLACES_BASE_INSTRUCTIONS}\n\n{skill_content}".strip()
+    pilot_agent = AnalizadorEnlacesAgent()
+    pilot_instruction = pilot_agent.build_system_instruction()
 
-    # 1. Medición sobre texto plano original
-    raw_chars = len(current_system_instruction)
-    raw_bytes = len(current_system_instruction.encode("utf-8"))
+    pilot_chars = len(pilot_instruction)
+    pilot_bytes = len(pilot_instruction.encode("utf-8"))
 
-    raw_char_reduction = BASELINE_RAW_CHARS - raw_chars
-    raw_pct_reduction = (raw_char_reduction / BASELINE_RAW_CHARS) * 100.0
+    char_reduction = BASELINE_BUILD_SYSTEM_INSTRUCTION_CHARS - pilot_chars
+    char_pct_reduction = (char_reduction / BASELINE_BUILD_SYSTEM_INSTRUCTION_CHARS) * 100.0
 
-    assert raw_pct_reduction >= 40.0, f"Reducción raw insuficiente: {raw_pct_reduction:.1f}% (esperado >= 40%)"
-    assert raw_chars <= 3250, f"Caracteres raw ({raw_chars}) superan el umbral esperado"
-    assert raw_bytes <= 3300, f"Bytes raw ({raw_bytes}) superan el umbral esperado"
+    byte_reduction = BASELINE_BUILD_SYSTEM_INSTRUCTION_BYTES - pilot_bytes
+    byte_pct_reduction = (byte_reduction / BASELINE_BUILD_SYSTEM_INSTRUCTION_BYTES) * 100.0
 
-    # 2. Medición sobre JSON serializado con escape ASCII
-    json_escaped_chars = len(json.dumps(current_system_instruction, ensure_ascii=True))
-    json_char_reduction = BASELINE_JSON_ESCAPED_CHARS - json_escaped_chars
-    json_pct_reduction = (json_char_reduction / BASELINE_JSON_ESCAPED_CHARS) * 100.0
+    # Verificaciones cuantitativas exactas
+    assert pilot_chars == 3457, f"Caracteres efectivos inesperados: {pilot_chars}"
+    assert pilot_bytes == 3513, f"Bytes efectivos inesperados: {pilot_bytes}"
+    assert char_reduction == 2494, f"Diferencia de caracteres inesperada: {char_reduction}"
+    assert byte_reduction == 2523, f"Diferencia de bytes inesperada: {byte_reduction}"
+    assert char_pct_reduction >= 40.0, f"Reducción porcentual insuficiente: {char_pct_reduction:.2f}%"
+    assert byte_pct_reduction >= 40.0, f"Reducción porcentual insuficiente: {byte_pct_reduction:.2f}%"
 
-    assert json_pct_reduction >= 40.0, f"Reducción JSON insuficiente: {json_pct_reduction:.1f}%"
-    assert json_escaped_chars <= 3500
+
+# =============================================================================
+# 2. Resultados de Referencia de la Versión Preservada (Commit 454601d)
+# =============================================================================
+
+# Commit de origen: 454601ddb6259bcec2b77f5ee6478649dd9f183f
+# Procedimiento de regeneración reproducible:
+#   Extraer 'agents/analizador_enlaces/agent.py' y '.agents/skills/analizar-url/SKILL.md'
+#   desde git show 454601d, instanciar AnalizadorEnlacesAgent con ScriptedMockLLMClient
+#   y ejecutar sobre los mismos casos ficticios.
+BASELINE_REFERENCE_RESULTS_COMMIT_454601d: Dict[str, Dict[str, Any]] = {
+    "caso_ip": {
+        "estado": "correcto",
+        "detalle_estado": "analizados_con_senales",
+        "intervino_agente": True,
+        "cantidad_enlaces_extraidos": 1,
+        "cantidad_enlaces_procesados": 1,
+        "enlaces_omitidos": [],
+        "advertencias": [
+            "URL [192.168.1.50]: Utiliza HTTP sin cifrado (tráfico legible en texto plano).",
+            "URL [192.168.1.50]: El enlace apunta directamente a una dirección IP (192.168.1.50) en lugar de un nombre de dominio legítimo.",
+        ],
+        "skills_cargadas": ["analizar-url"],
+        "herramientas_invocadas": ["tool_analizar_url"],
+        "enlaces_analizados": [
+            {
+                "url_id": "URL-1",
+                "masked_url": "http://192.168.1.50/login",
+                "estado_enlace": "analizado_con_senales",
+                "reglas_activadas": ["REGLA-URL-01"],
+            }
+        ],
+    },
+    "caso_tld": {
+        "estado": "correcto",
+        "detalle_estado": "analizados_con_senales",
+        "intervino_agente": True,
+        "cantidad_enlaces_extraidos": 1,
+        "cantidad_enlaces_procesados": 1,
+        "enlaces_omitidos": [],
+        "advertencias": [
+            "URL [promo-aniversario.xyz]: El dominio utiliza una extensión de dominio de bajo costo frecuentemente asociada a campañas efímeras de spam/phishing (.xyz).",
+        ],
+        "skills_cargadas": ["analizar-url"],
+        "herramientas_invocadas": ["tool_analizar_url"],
+        "enlaces_analizados": [
+            {
+                "url_id": "URL-1",
+                "masked_url": "https://promo-aniversario.xyz/sorteo",
+                "estado_enlace": "analizado_con_senales",
+                "reglas_activadas": ["REGLA-URL-05"],
+            }
+        ],
+    },
+    "caso_legitimo": {
+        "estado": "correcto",
+        "detalle_estado": "analizados_sin_senales",
+        "intervino_agente": True,
+        "cantidad_enlaces_extraidos": 1,
+        "cantidad_enlaces_procesados": 1,
+        "enlaces_omitidos": [],
+        "advertencias": [
+            "La ausencia de señales sintácticas en un enlace NO garantiza que el sitio web sea legítimo o seguro.",
+        ],
+        "skills_cargadas": ["analizar-url"],
+        "herramientas_invocadas": ["tool_analizar_url"],
+        "enlaces_analizados": [
+            {
+                "url_id": "URL-1",
+                "masked_url": "https://portal-seguro.ejemplo.com/faq",
+                "estado_enlace": "analizado_sin_senales",
+                "reglas_activadas": [],
+            }
+        ],
+    },
+    "caso_multiples_mixto": {
+        "estado": "correcto",
+        "detalle_estado": "analizados_con_senales",
+        "intervino_agente": True,
+        "cantidad_enlaces_extraidos": 2,
+        "cantidad_enlaces_procesados": 2,
+        "enlaces_omitidos": [],
+        "advertencias": [
+            "URL [promocion-aniversario.xyz]: El dominio utiliza una extensión de dominio de bajo costo frecuentemente asociada a campañas efímeras de spam/phishing (.xyz).",
+            "La ausencia de señales sintácticas en un enlace NO garantiza que el sitio web sea legítimo o seguro.",
+        ],
+        "skills_cargadas": ["analizar-url"],
+        "herramientas_invocadas": ["tool_analizar_url"],
+        "enlaces_analizados": [
+            {
+                "url_id": "URL-1",
+                "masked_url": "https://promocion-aniversario.xyz/premio",
+                "estado_enlace": "analizado_con_senales",
+                "reglas_activadas": ["REGLA-URL-05"],
+            },
+            {
+                "url_id": "URL-2",
+                "masked_url": "https://portal-seguro.ejemplo.com/contacto",
+                "estado_enlace": "analizado_sin_senales",
+                "reglas_activadas": [],
+            },
+        ],
+    },
+    "caso_sin_enlaces": {
+        "estado": "correcto",
+        "detalle_estado": "sin_enlaces",
+        "intervino_agente": True,
+        "cantidad_enlaces_extraidos": 0,
+        "cantidad_enlaces_procesados": 0,
+        "enlaces_omitidos": [],
+        "advertencias": [],
+        "skills_cargadas": ["analizar-url"],
+        "herramientas_invocadas": ["tool_analizar_url"],
+        "enlaces_analizados": [],
+    },
+}
 
 
 def test_pilot_functional_contract_equivalence_synthetic_cases():
     """
-    Verifica la equivalencia funcional estricta comparando directamente la ejecución del
-    agente piloto contra la clase AnalizadorEnlacesAgent del commit base 454601d sobre
-    los mismos casos y con el mismo cliente simulado.
+    Verifica que el agente piloto produzca resultados idénticos a los resultados
+    de referencia obtenidos del commit base 454601d en todos sus campos funcionales,
+    sin requerir binarios ni historial de Git en el entorno de ejecución.
     """
-    BaseAgentClass = _load_base_agent_class()
+    cases_inputs = {
+        "caso_ip": ["http://192.168.1.50/login"],
+        "caso_tld": ["https://promo-aniversario.xyz/sorteo"],
+        "caso_legitimo": ["https://portal-seguro.ejemplo.com/faq"],
+        "caso_multiples_mixto": [
+            "https://promocion-aniversario.xyz/premio",
+            "https://portal-seguro.ejemplo.com/contacto",
+        ],
+        "caso_sin_enlaces": [],
+    }
 
-    cases = [
-        {
-            "id": "caso_ip",
-            "urls": ["http://192.168.1.50/login"],
-            "expected_estado": "correcto",
-            "expected_detalle": "analizados_con_senales",
-            "expected_reglas": ["REGLA-URL-01"],
-        },
-        {
-            "id": "caso_tld",
-            "urls": ["https://promo-aniversario.xyz/sorteo"],
-            "expected_estado": "correcto",
-            "expected_detalle": "analizados_con_senales",
-            "expected_reglas": ["REGLA-URL-05"],
-        },
-        {
-            "id": "caso_legitimo",
-            "urls": ["https://portal-seguro.ejemplo.com/faq"],
-            "expected_estado": "correcto",
-            "expected_detalle": "analizados_sin_senales",
-            "expected_reglas": [],
-        },
-    ]
-
-    for c in cases:
-        urls = c["urls"]
+    for case_id, urls in cases_inputs.items():
+        ref = BASELINE_REFERENCE_RESULTS_COMMIT_454601d[case_id]
         url_map = {f"URL-{i+1}": u for i, u in enumerate(urls)}
         ctx = PreparationSessionContext(
             input_mode="text",
-            raw_input_text=" ".join(urls),
+            raw_input_text=" ".join(urls) if urls else "Sin enlaces",
             validation_done=True,
             is_input_valid=True,
             links_extracted=True,
@@ -206,42 +282,27 @@ def test_pilot_functional_contract_equivalence_synthetic_cases():
         pilot_agent = AnalizadorEnlacesAgent(llm_client=client_pilot)
         pilot_res = pilot_agent.run(ctx, tracer=tracer_pilot)
 
-        # Verificación contra especificación esperada
-        assert pilot_res.estado == c["expected_estado"]
-        assert pilot_res.detalle_estado == c["expected_detalle"]
-        assert pilot_res.cantidad_enlaces_extraidos == len(urls)
-        assert pilot_res.cantidad_enlaces_procesados == len(urls)
-        assert pilot_res.enlaces_omitidos == []
-        assert "analizar-url" in pilot_res.skills_cargadas
-        assert "tool_analizar_url" in pilot_res.herramientas_invocadas
+        # Verificación estricta de equivalencia campo a campo contra referencia base
+        assert pilot_res.estado == ref["estado"]
+        assert pilot_res.detalle_estado == ref["detalle_estado"]
+        assert pilot_res.intervino_agente == ref["intervino_agente"]
+        assert pilot_res.cantidad_enlaces_extraidos == ref["cantidad_enlaces_extraidos"]
+        assert pilot_res.cantidad_enlaces_procesados == ref["cantidad_enlaces_procesados"]
+        assert pilot_res.enlaces_omitidos == ref["enlaces_omitidos"]
+        assert pilot_res.advertencias == ref["advertencias"]
+        assert pilot_res.skills_cargadas == ref["skills_cargadas"]
+        assert pilot_res.herramientas_invocadas == ref["herramientas_invocadas"]
+        assert len(pilot_res.enlaces_analizados) == len(ref["enlaces_analizados"])
 
-        if c["expected_reglas"]:
-            assert pilot_res.enlaces_analizados[0].reglas_activadas == c["expected_reglas"]
-        else:
-            assert pilot_res.enlaces_analizados[0].reglas_activadas == []
-
-        # Comparación directa de equivalencia contra el commit base 454601d si está disponible
-        if BaseAgentClass is not None:
-            tracer_base = AgentTracer()
-            client_base = ScriptedMockLLMClient()
-            base_agent = BaseAgentClass(llm_client=client_base)
-            base_res = base_agent.run(session_ctx=ctx, tracer=tracer_base)
-
-            assert pilot_res.estado == base_res.estado
-            assert pilot_res.detalle_estado == base_res.detalle_estado
-            assert pilot_res.cantidad_enlaces_extraidos == base_res.cantidad_enlaces_extraidos
-            assert pilot_res.cantidad_enlaces_procesados == base_res.cantidad_enlaces_procesados
-            assert pilot_res.enlaces_omitidos == base_res.enlaces_omitidos
-            assert len(pilot_res.enlaces_analizados) == len(base_res.enlaces_analizados)
-            for p_item, b_item in zip(pilot_res.enlaces_analizados, base_res.enlaces_analizados):
-                assert p_item.url_id == b_item.url_id
-                assert p_item.masked_url == b_item.masked_url
-                assert p_item.estado_enlace == b_item.estado_enlace
-                assert p_item.reglas_activadas == b_item.reglas_activadas
+        for p_item, r_item in zip(pilot_res.enlaces_analizados, ref["enlaces_analizados"]):
+            assert p_item.url_id == r_item["url_id"]
+            assert p_item.masked_url == r_item["masked_url"]
+            assert p_item.estado_enlace == r_item["estado_enlace"]
+            assert p_item.reglas_activadas == r_item["reglas_activadas"]
 
 
 # =============================================================================
-# 2. Privacidad y Enmascaramiento de Credenciales y Parámetros Sensibles
+# 3. Privacidad y Enmascaramiento de Credenciales y Parámetros Sensibles
 # =============================================================================
 
 def test_url_privacy_sanitization_in_prompt_and_tool_exchange():
@@ -249,7 +310,7 @@ def test_url_privacy_sanitization_in_prompt_and_tool_exchange():
     Verifica que las credenciales en URL (user:pass en netloc) y parámetros de consulta
     sensibles conocidos (token, clave, password, email) sean enmascarados de forma efectiva
     tanto en la entrada del prompt como en las respuestas de herramientas en los recorridos probados.
-    
+
     Nota de delimitación: Esta verificación confirma el enmascaramiento para los patrones
     explícitamente contemplados por las expresiones regulares del proyecto, sin constituir
     una garantía universal sobre datos arbitrarios en texto libre no estructurado.
@@ -307,7 +368,7 @@ def test_url_privacy_sanitization_in_prompt_and_tool_exchange():
 
 
 # =============================================================================
-# 3. Caso Sin Enlaces: Especialista Aislado vs. Flujo del Orquestador
+# 4. Caso Sin Enlaces: Especialista Aislado vs. Flujo del Orquestador
 # =============================================================================
 
 def test_no_links_specialist_isolation_vs_orchestrator_skipping():

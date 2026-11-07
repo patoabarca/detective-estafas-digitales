@@ -44,21 +44,18 @@ Medición estricta realizada sobre el commit base `454601d` y la rama de trabajo
 
 ---
 
-### 2.2 Medición del Contexto de Instrucción de Sistema
+### 2.2 Medición Real del Contexto Efectivo de `build_system_instruction()`
 
-Se ejecutó el mismo procedimiento automatizado de cálculo en Python para ambos estados:
-`instruccion_completa = f"{BASE_INSTRUCTIONS}\n\n{SKILL_BODY}".strip()`
+Medición obtenida ejecutando directamente el método `build_system_instruction()` de cada agente, usando sus respectivos cargadores y archivos `SKILL.md` sin fórmulas alternativas:
 
-| Representación del Texto | Base (`454601d`) | Piloto Actual | Diferencia Absoluta | Reducción (%) |
+| Métrica Efectiva | Versión Base (`454601d`) | Versión Piloto Actual | Diferencia Absoluta | Reducción (%) |
 | :--- | :---: | :---: | :---: | :---: |
-| **Texto plano original (raw chars)** | 5.515 caracteres | 3.177 caracteres | **-2.338 caracteres** | **-42,39 %** |
-| **Bytes UTF-8 originales** | 5.592 bytes | 3.228 bytes | **-2.364 bytes** | **-42,27 %** |
-| **JSON serializado (`ensure_ascii=False`) chars** | 5.579 caracteres | 3.217 caracteres | **-2.362 caracteres** | **-42,34 %** |
-| **JSON serializado (`ensure_ascii=False`) bytes** | 5.656 bytes | 3.268 bytes | **-2.388 bytes** | **-42,22 %** |
-| **JSON con escape ASCII (`ensure_ascii=True`) chars** | 5.960 caracteres | 3.472 caracteres | **-2.488 caracteres** | **-41,74 %** |
+| **Caracteres Efectivos** | **5.951** caracteres | **3.457** caracteres | **-2.494 caracteres** | **-41,91 %** |
+| **Bytes UTF-8 Efectivos** | **6.036** bytes | **3.513** bytes | **-2.523 bytes** | **-41,80 %** |
 
-*Causa técnica de las discrepancias anteriores:*
-Las cifras de ~5.958 y ~3.464 caracteres reportadas previamente provenían de medir cadenas serializadas con `json.dumps(..., ensure_ascii=True)`, que transforma cada vocal acentuada en español (`á`, `é`, `í`, `ó`, `ú`, `ñ`) en su secuencia de escape `\uXXXX` (6 caracteres ASCII por letra). Al medir el texto plano UTF-8 nativo, la reducción real es de **5.515 a 3.177 caracteres (-42,4%)** y de **5.592 a 3.228 bytes (-42,3%)**.
+*Causa técnica de las variaciones previas:*
+- Cuando se medía únicamente la concatenación cruda sin el formateador de sección de skills (`format_skills_prompt_section`), las cifras daban 5.515 caracteres crudos (5.592 bytes) para la base y 3.177 caracteres (3.228 bytes) para el piloto.
+- Sin embargo, lo que efectivamente se envía al modelo en el bucle de herramientas (`run_agent_tool_loop`) es la salida completa de `build_system_instruction()`, que incorpora los encabezados y metadatos de la skill cargada. Las cifras definitivas y exactas de contexto entregado a la API son **5.951 caracteres (6.036 bytes)** en la base frente a **3.457 caracteres (3.513 bytes)** en el piloto, logrando una reducción real de **2.494 caracteres (-41,91%)** y **2.523 bytes UTF-8 (-41,80%)**.
 
 ---
 
@@ -68,10 +65,18 @@ Las cifras de ~5.958 y ~3.464 caracteres reportadas previamente provenían de me
 - **Alcance comprobado:** Se validó que las credenciales en netloc (`usuario:clave@host`) se sustituyan por `[CREDENCIAL_URL_OCULTA]` y que parámetros sensibles comunes (`token`, `clave`, `password`, `email`) en query/path se sustituyan por `[VALOR_URL_OCULTO]`. En la prueba automatizada, ninguno de los secretos pasó en texto claro al historial de mensajes enviado al cliente del modelo.
 - **Delimitación explícita:** En coincidencia con la advertencia técnica de `agents/common/privacy.py`, este enmascaramiento por expresiones regulares **reduce la exposición de datos frecuentes en los recorridos probados, pero no constituye una garantía universal** contra fugas en texto libre arbitrario o parámetros no estandarizados.
 
-### 3.2 Equivalencia Funcional Directa contra la Versión Base
-- La suite [`tests/test_analizador_enlaces_pilot.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/tests/test_analizador_enlaces_pilot.py) carga dinámicamente en memoria la clase original `AnalizadorEnlacesAgent` directamente del commit base `454601d` (`git show 454601d:agents/analizador_enlaces/agent.py`).
-- Ejecuta en paralelo el agente base y el agente piloto con el mismo cliente simulado y el mismo contexto.
-- Comprueba la equivalencia estricta de todos los campos del contrato: `estado`, `detalle_estado`, `cantidad_enlaces_extraidos`, `cantidad_enlaces_procesados`, `enlaces_omitidos` y la lista de `reglas_activadas` por enlace.
+### 3.2 Pruebas Independientes de Git y Equivalencia Funcional
+- La suite [`tests/test_analizador_enlaces_pilot.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/tests/test_analizador_enlaces_pilot.py) prescinde totalmente de comandos `git` en tiempo de ejecución, permitiendo que la suite corra dentro de imágenes Docker limpias sin binario ni historial de Git.
+- **Dataset de referencia congelado:** Se incorporó el diccionario `BASELINE_REFERENCE_RESULTS_COMMIT_454601d`, que contiene los resultados completos y exactos generados por la versión base sobre los casos ficticios (`caso_ip`, `caso_tld`, `caso_legitimo`, `caso_multiples_mixto`, `caso_sin_enlaces`).
+- **Commit de origen:** `454601ddb6259bcec2b77f5ee6478649dd9f183f`.
+- **Procedimiento de regeneración reproducible:**
+  ```python
+  # Extraer la clase base y el SKILL.md original desde el commit 454601d:
+  base_agent_code = subprocess.check_output(['git', 'show', '454601d:agents/analizador_enlaces/agent.py'], text=True)
+  base_skill_code = subprocess.check_output(['git', 'show', '454601d:.agents/skills/analizar-url/SKILL.md'], text=True)
+  # Instanciar el agente base con ScriptedMockLLMClient y ejecutar sobre los casos.
+  ```
+- **Campos comparados:** Se valida la igualdad estricta de `estado`, `detalle_estado`, `intervino_agente`, `cantidad_enlaces_extraidos`, `cantidad_enlaces_procesados`, `enlaces_omitidos`, `advertencias`, `skills_cargadas`, `herramientas_invocadas`, y para cada enlace `url_id`, `masked_url`, `estado_enlace` y `reglas_activadas`.
 
 ---
 
@@ -100,7 +105,7 @@ Durante la validación con la API real de Google Gemini (`gemini-3.5-flash-lite`
 
 ### 4.3 Explicación del Archivo `real_pilot_execution_result.json`
 - **Motivo de la creación manual:** Para no violar la directiva de no repetir automáticamente la prueba completa ni generar tráfico adicional hacia la API tras los 2 intentos ya cursados, se utilizó la herramienta `write_file` para generar el archivo JSON en `scratch/` a partir de las líneas registradas en stdout.
-- **Campos verificados fehacientemente (respaldados por stdout original):**
+- **Campos verificados fehacientemente (respaldados por stdout original de la 2ª corrida):**
   - Modelo: `gemini-3.5-flash-lite`
   - Duración total de la 2ª interacción: `2.98s`
   - Turnos conversacionales: `2`
@@ -111,15 +116,45 @@ Durante la validación con la API real de Google Gemini (`gemini-3.5-flash-lite`
   - Detección en `URL-1`: `REGLA-URL-05` (evidencia `.xyz`)
   - Clasificación en `URL-2`: `analizado_sin_senales`
 - **Campos NO VERIFICADOS (transparencia metodológica):**
-  - **Desglose de prompt vs. output tokens:** El stdout mostró `Prompt=0, Output=0, Total=3022`. La API en este endpoint acumuló el total sin desglosar componentes en la estructura consumida por el tracer. Cualquier desglose es **NO VERIFICADO**.
+  - **Métricas de la 1ª corrida:** No existen registros de tiempo ni consumo en stdout para la primera corrida (finalizada en línea 89 antes de cualquier print).
+  - **Desglose de prompt vs. output tokens en la 2ª corrida:** El stdout mostró `Prompt=0, Output=0, Total=3022`. La API en este endpoint acumuló el total sin desglosar componentes en la estructura consumida por el tracer. Cualquier desglose es **NO VERIFICADO**.
   - **Argumentos de herramienta en el tracer:** En stdout figuró `Tool llamada: None con args: None` debido a un desacople de nombres en el script de prueba (`tc.get('name')` en vez de los campos del tracer). Aunque el contrato final certificó la invocación de `tool_analizar_url`, el log del tracer para esa llamada quedó incompleto en stdout.
 
 ---
 
-## 5. Estado de la Rama y Próximos Pasos
+## 5. Validación Aislada en Docker
+
+Se ejecutó la validación completa en contenedores de acuerdo a los requerimientos de aislamiento estricto:
+
+### 5.1 Construcción de Imagen
+- **Etiqueta dedicada:** `detective-estafas-digitales:piloto-refactor`
+- **Comando:** `docker build -t detective-estafas-digitales:piloto-refactor .`
+- **Inspección de módulos:**
+  - Presencia verificada de `agents/analizador_enlaces/agent.py` (6.403 bytes), `prompts.py` (4.708 bytes) y `result_builder.py` (6.874 bytes).
+  - Presencia verificada de `.agents/skills/analizar-url/SKILL.md` (1.608 bytes) y `references/url_signals_guide.md` (4.635 bytes).
+
+### 5.2 Pruebas en Contenedor Offline (Zero Network)
+- **Ejecución aislada de la suite:**
+  `docker run --rm --network none --entrypoint pytest detective-estafas-digitales:piloto-refactor -v -k "not test_real_gemini_api"`
+- **Resultado:** **148 pruebas aprobadas, 1 deseleccionada condicional en 3.95s**.
+- **Independencia de red:** La bandera `--network none` certificó que ninguna prueba requiere conectividad a internet ni interactúa con la API de Gemini.
+
+### 5.3 Arranque y Verificación de Streamlit
+- **Instancia temporal aislada:**
+  - Nombre: `detective-piloto-test`
+  - Puerto mapeado: `127.0.0.1:8503 -> 8501/tcp` (puerto 8503 libre).
+  - Sin volúmenes montados de `output/` ni variables de credenciales inyectadas.
+- **Verificación de logs:** Uvicorn y Streamlit iniciaron correctamente en `0.0.0.0:8501`.
+- **Sondeo HTTP:** `Invoke-WebRequest -Uri "http://127.0.0.1:8503"` respondió con código **200 OK**.
+- **Limpieza:** El contenedor temporal `detective-piloto-test` fue detenido y eliminado inmediatamente tras la prueba.
+- **Contenedores preexistentes:** El contenedor en producción `detective-estafas-web` (puerto 8502) y la aplicación HomeLens permanecieron activos y completamente inalterados.
+
+---
+
+## 6. Estado de la Rama y Cierre Técnico
 
 - **Rama:** `refactor/piloto-analizador-enlaces`
-- **Etiqueta v2.0-orquesta-presentada:** Intacta sobre `454601d`.
-- **Modificación pendiente ajena:** `compose.yaml` (línea 6) preservada intacta.
-- **Suite de pruebas automatizadas:** 148 pruebas aprobadas (1 deseleccionada condicional).
-- **Conclusión del piloto:** La modularización técnica y reducción de contexto quedaron demostradas formalmente. Resta la validación de Docker y la decisión de integración.
+- **Etiquetas preservadas:** `v2.0-orquesta-presentada` intacta sobre `454601ddb6259bcec2b77f5ee6478649dd9f183f`.
+- **Cambios locales ajenos conservados:** `compose.yaml` (modificación local no commiteada en línea 6) y `~$Orquesta_Agentes_y_Skills.pptx` (archivo temporal).
+- **Alcance preservado:** Sin modificaciones en los demás agentes (`preparador`, `analizador_mensajes`, `evaluador`).
+- **Estado de la suite:** 148 pruebas aprobadas tanto localmente como en Docker.
