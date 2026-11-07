@@ -98,13 +98,13 @@ Durante la validación con la API real de Google Gemini (`gemini-3.5-flash-lite`
    - **¿Llegó a Gemini?:** **SÍ**. Se realizó una segunda interacción real con Gemini. Gracias a los `print` agregados, los datos de salida del agente se imprimieron en stdout antes de la caída del proceso.
 
 ### 4.2 Diferenciación de Conceptos Operativos
-- **Ejecuciones del script:** **2 ejecuciones locales**, ambas con salida de error (exit code 1) por fallo de serialización local.
-- **Solicitudes reales al modelo (HTTP/API):** **4 solicitudes HTTP en total** (2 solicitudes por cada corrida del agente: Turno 1 con prompt inicial; Turno 2 con la respuesta de la herramienta).
-- **Turnos del modelo por conversación:** **2 turnos** en cada interacción.
-- **Reintentos del cliente:** **0 reintentos**. En ambas ejecuciones la API respondió en el primer intento sin errores HTTP ni desconexiones.
+- **Ejecuciones del script:** **2 ejecuciones locales**, ambas con salida de error (exit code 1) por fallo de serialización local en `json.dump()`.
+- **Solicitudes reales al modelo (HTTP/API):** El total exacto de solicitudes HTTP cursadas a nivel de red **no está verificado**, ya que no existen registros de tráfico crudo ni logs de red de la primera corrida que permitan acreditarlo fehacientemente. En la segunda corrida, la conversación completó 2 turnos registrados por el agente (solicitud inicial y respuesta de herramienta).
+- **Turnos del modelo por conversación:** **2 turnos** registrados en la segunda interacción.
+- **Reintentos del cliente:** **0 reintentos** reportados en la segunda corrida. En esa interacción la API respondió en el primer intento sin errores HTTP ni desconexiones.
 
 ### 4.3 Explicación del Archivo `real_pilot_execution_result.json`
-- **Motivo de la creación manual:** Para no violar la directiva de no repetir automáticamente la prueba completa ni generar tráfico adicional hacia la API tras los 2 intentos ya cursados, se utilizó la herramienta `write_file` para generar el archivo JSON en `scratch/` a partir de las líneas registradas en stdout.
+- **Motivo de la creación manual:** Para no violar la directiva de no repetir automáticamente la prueba completa ni generar tráfico adicional hacia la API tras los 2 intentos ya cursados, se utilizó la herramienta `write_file` para generar el archivo JSON en `scratch/` a partir de las líneas registradas en stdout de la segunda corrida.
 - **Campos verificados fehacientemente (respaldados por stdout original de la 2ª corrida):**
   - Modelo: `gemini-3.5-flash-lite`
   - Duración total de la 2ª interacción: `2.98s`
@@ -116,6 +116,7 @@ Durante la validación con la API real de Google Gemini (`gemini-3.5-flash-lite`
   - Detección en `URL-1`: `REGLA-URL-05` (evidencia `.xyz`)
   - Clasificación en `URL-2`: `analizado_sin_senales`
 - **Campos NO VERIFICADOS (transparencia metodológica):**
+  - **Total exacto de solicitudes HTTP cursadas:** No está verificado por ausencia de telemetría de red en la primera corrida.
   - **Métricas de la 1ª corrida:** No existen registros de tiempo ni consumo en stdout para la primera corrida (finalizada en línea 89 antes de cualquier print).
   - **Desglose de prompt vs. output tokens en la 2ª corrida:** El stdout mostró `Prompt=0, Output=0, Total=3022`. La API en este endpoint acumuló el total sin desglosar componentes en la estructura consumida por el tracer. Cualquier desglose es **NO VERIFICADO**.
   - **Argumentos de herramienta en el tracer:** En stdout figuró `Tool llamada: None con args: None` debido a un desacople de nombres en el script de prueba (`tc.get('name')` en vez de los campos del tracer). Aunque el contrato final certificó la invocación de `tool_analizar_url`, el log del tracer para esa llamada quedó incompleto en stdout.
