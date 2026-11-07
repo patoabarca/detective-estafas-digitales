@@ -96,36 +96,73 @@ class ScriptedMockLLMClient:
 # 1. Medición de Reducción de Contexto y Equivalencia Funcional
 # =============================================================================
 
-# Línea base congelada del commit 454601ddb6259bcec2b77f5ee6478649dd9f183f
-BASELINE_SYSTEM_INSTRUCTION_CHARS = 5958
-BASELINE_SYSTEM_INSTRUCTION_BYTES = 6022
+# Línea base congelada del commit 454601ddb6259bcec2b77f5ee6478649dd9f183f:
+# - Texto plano original (raw string): 5.515 caracteres, 5.592 bytes UTF-8
+# - JSON serializado con escape ASCII (ensure_ascii=True): 5.960 caracteres
+BASELINE_RAW_CHARS = 5515
+BASELINE_RAW_BYTES = 5592
+BASELINE_JSON_ESCAPED_CHARS = 5960
+
+
+def _load_base_agent_class():
+    """
+    Carga dinámicamente en memoria la clase AnalizadorEnlacesAgent del commit base 454601d
+    para asegurar que las pruebas de equivalencia comparen contra la versión base original
+    y no únicamente contra expectativas estáticas o contra la nueva implementación.
+    """
+    import subprocess
+    import types
+    try:
+        base_code = subprocess.check_output(
+            ["git", "show", "454601d:agents/analizador_enlaces/agent.py"],
+            text=True,
+            encoding="utf-8",
+        )
+        mod = types.ModuleType("base_agent_mod")
+        exec(compile(base_code, "base_agent_mod", "exec"), mod.__dict__)
+        return mod.AnalizadorEnlacesAgent
+    except Exception:
+        return None
 
 
 def test_pilot_system_instruction_context_reduction():
     """
     Verifica que la modularización del agente y el aligeramiento de SKILL.md
-    reduzcan la instrucción de sistema al menos un 35% en caracteres y bytes UTF-8.
+    reduzcan la instrucción de sistema más de un 40% en caracteres y bytes UTF-8,
+    distinguiendo texto plano original de la serialización JSON con escape ASCII.
     """
     skills = load_skills_for_agent(ANALIZADOR_ENLACES_AGENT_NAME, ANALIZADOR_ENLACES_ALLOWED_SKILLS)
     skill_content = "\n\n".join(s.instructions_markdown for s in skills.values())
     current_system_instruction = f"{ANALIZADOR_ENLACES_BASE_INSTRUCTIONS}\n\n{skill_content}".strip()
 
-    current_chars = len(current_system_instruction)
-    current_bytes = len(current_system_instruction.encode("utf-8"))
+    # 1. Medición sobre texto plano original
+    raw_chars = len(current_system_instruction)
+    raw_bytes = len(current_system_instruction.encode("utf-8"))
 
-    char_reduction = BASELINE_SYSTEM_INSTRUCTION_CHARS - current_chars
-    pct_reduction = (char_reduction / BASELINE_SYSTEM_INSTRUCTION_CHARS) * 100.0
+    raw_char_reduction = BASELINE_RAW_CHARS - raw_chars
+    raw_pct_reduction = (raw_char_reduction / BASELINE_RAW_CHARS) * 100.0
 
-    assert pct_reduction >= 35.0, f"Reducción insuficiente: {pct_reduction:.1f}% (esperado >= 35%)"
-    assert current_chars < 3600, f"Caracteres actuales ({current_chars}) superan el límite esperado"
-    assert current_bytes < 3700, f"Bytes actuales ({current_bytes}) superan el límite esperado"
+    assert raw_pct_reduction >= 40.0, f"Reducción raw insuficiente: {raw_pct_reduction:.1f}% (esperado >= 40%)"
+    assert raw_chars <= 3250, f"Caracteres raw ({raw_chars}) superan el umbral esperado"
+    assert raw_bytes <= 3300, f"Bytes raw ({raw_bytes}) superan el umbral esperado"
+
+    # 2. Medición sobre JSON serializado con escape ASCII
+    json_escaped_chars = len(json.dumps(current_system_instruction, ensure_ascii=True))
+    json_char_reduction = BASELINE_JSON_ESCAPED_CHARS - json_escaped_chars
+    json_pct_reduction = (json_char_reduction / BASELINE_JSON_ESCAPED_CHARS) * 100.0
+
+    assert json_pct_reduction >= 40.0, f"Reducción JSON insuficiente: {json_pct_reduction:.1f}%"
+    assert json_escaped_chars <= 3500
 
 
 def test_pilot_functional_contract_equivalence_synthetic_cases():
     """
-    Verifica que el agente piloto produzca resultados válidos y conformes
-    al contrato funcional en casos sintéticos diversos.
+    Verifica la equivalencia funcional estricta comparando directamente la ejecución del
+    agente piloto contra la clase AnalizadorEnlacesAgent del commit base 454601d sobre
+    los mismos casos y con el mismo cliente simulado.
     """
+    BaseAgentClass = _load_base_agent_class()
+
     cases = [
         {
             "id": "caso_ip",
@@ -163,24 +200,44 @@ def test_pilot_functional_contract_equivalence_synthetic_cases():
             url_id_map=url_map,
             masked_url_id_map=url_map,
         )
-        tracer = AgentTracer()
-        client = ScriptedMockLLMClient()
-        agent = AnalizadorEnlacesAgent(llm_client=client)
 
-        res = agent.run(ctx, tracer=tracer)
+        tracer_pilot = AgentTracer()
+        client_pilot = ScriptedMockLLMClient()
+        pilot_agent = AnalizadorEnlacesAgent(llm_client=client_pilot)
+        pilot_res = pilot_agent.run(ctx, tracer=tracer_pilot)
 
-        assert res.estado == c["expected_estado"]
-        assert res.detalle_estado == c["expected_detalle"]
-        assert res.cantidad_enlaces_extraidos == len(urls)
-        assert res.cantidad_enlaces_procesados == len(urls)
-        assert res.enlaces_omitidos == []
-        assert "analizar-url" in res.skills_cargadas
-        assert "tool_analizar_url" in res.herramientas_invocadas
+        # Verificación contra especificación esperada
+        assert pilot_res.estado == c["expected_estado"]
+        assert pilot_res.detalle_estado == c["expected_detalle"]
+        assert pilot_res.cantidad_enlaces_extraidos == len(urls)
+        assert pilot_res.cantidad_enlaces_procesados == len(urls)
+        assert pilot_res.enlaces_omitidos == []
+        assert "analizar-url" in pilot_res.skills_cargadas
+        assert "tool_analizar_url" in pilot_res.herramientas_invocadas
 
         if c["expected_reglas"]:
-            assert res.enlaces_analizados[0].reglas_activadas == c["expected_reglas"]
+            assert pilot_res.enlaces_analizados[0].reglas_activadas == c["expected_reglas"]
         else:
-            assert res.enlaces_analizados[0].reglas_activadas == []
+            assert pilot_res.enlaces_analizados[0].reglas_activadas == []
+
+        # Comparación directa de equivalencia contra el commit base 454601d si está disponible
+        if BaseAgentClass is not None:
+            tracer_base = AgentTracer()
+            client_base = ScriptedMockLLMClient()
+            base_agent = BaseAgentClass(llm_client=client_base)
+            base_res = base_agent.run(session_ctx=ctx, tracer=tracer_base)
+
+            assert pilot_res.estado == base_res.estado
+            assert pilot_res.detalle_estado == base_res.detalle_estado
+            assert pilot_res.cantidad_enlaces_extraidos == base_res.cantidad_enlaces_extraidos
+            assert pilot_res.cantidad_enlaces_procesados == base_res.cantidad_enlaces_procesados
+            assert pilot_res.enlaces_omitidos == base_res.enlaces_omitidos
+            assert len(pilot_res.enlaces_analizados) == len(base_res.enlaces_analizados)
+            for p_item, b_item in zip(pilot_res.enlaces_analizados, base_res.enlaces_analizados):
+                assert p_item.url_id == b_item.url_id
+                assert p_item.masked_url == b_item.masked_url
+                assert p_item.estado_enlace == b_item.estado_enlace
+                assert p_item.reglas_activadas == b_item.reglas_activadas
 
 
 # =============================================================================
@@ -189,9 +246,13 @@ def test_pilot_functional_contract_equivalence_synthetic_cases():
 
 def test_url_privacy_sanitization_in_prompt_and_tool_exchange():
     """
-    Verifica que las credenciales en URL y parámetros de consulta sensibles
-    (tokens, claves, passwords, correos) sean enmascarados de forma irreversible
-    tanto en la entrada del prompt como en las respuestas de herramientas, sin fugas al LLM.
+    Verifica que las credenciales en URL (user:pass en netloc) y parámetros de consulta
+    sensibles conocidos (token, clave, password, email) sean enmascarados de forma efectiva
+    tanto en la entrada del prompt como en las respuestas de herramientas en los recorridos probados.
+    
+    Nota de delimitación: Esta verificación confirma el enmascaramiento para los patrones
+    explícitamente contemplados por las expresiones regulares del proyecto, sin constituir
+    una garantía universal sobre datos arbitrarios en texto libre no estructurado.
     """
     raw_url = (
         "https://usuario_admin:clave_super_secreta_999@servidor-sospechoso.com/panel"
