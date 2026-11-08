@@ -67,8 +67,8 @@ def _redact_url_component(comp: str) -> Tuple[str, int]:
 def sanitize_url_for_external_llm(url: str) -> Tuple[str, int]:
     """
     Oculta credenciales embebidas (`user:pass@host`) y parámetros o valores sensibles
-    en rutas (`path`), `query` y `fragment` de una URL antes de enviarla al modelo externo,
-    conservando el esquema, dominio y estructura.
+    en rutas (`path`), `query` y `fragment` de una URL (o componentes/evidencias aisladas)
+    antes de enviarla al modelo externo, conservando el esquema, dominio y estructura.
     Devuelve la URL sanitizada y la cantidad de ocultamientos aplicados.
     El enlace original se mantiene intacto en memoria local para `url_analyzer`.
     """
@@ -91,6 +91,12 @@ def sanitize_url_for_external_llm(url: str) -> Tuple[str, int]:
         fragment, frag_count = _redact_url_component(parts.fragment)
         redactions_count += (path_count + query_count + frag_count)
 
+        # Si no había esquema original, netloc podría contener una query o fragmento aislado
+        # (por ejemplo, 'token=123&x=1' donde urlsplit ubica todo en netloc al no haber '/' o '?').
+        if not has_scheme:
+            netloc, netloc_count = _redact_url_component(netloc)
+            redactions_count += netloc_count
+
         rebuilt = urlunsplit((parts.scheme if has_scheme else "", netloc, path, query, fragment))
         if not has_scheme and rebuilt.startswith("//"):
             rebuilt = rebuilt[2:]
@@ -98,6 +104,17 @@ def sanitize_url_for_external_llm(url: str) -> Tuple[str, int]:
     except Exception:
         fallback, fb_count = _redact_url_component(working)
         return fallback, fb_count
+
+
+def sanitize_url_component_for_external_llm(component: str) -> Tuple[str, int]:
+    """
+    Oculta credenciales, parámetros sensibles, tokens de ruta y datos sensibles
+    en un componente, fragmento o evidencia de URL aislada (query, netloc, path, userinfo).
+    Devuelve el componente sanitizado y la cantidad de ocultamientos aplicados.
+    """
+    if not component:
+        return "", 0
+    return sanitize_url_for_external_llm(component)
 
 
 @dataclass

@@ -29,7 +29,10 @@ from agents.analizador_enlaces.agent import (
 )
 from agents.analizador_enlaces.prompts import build_untrusted_urls_prompt
 from agents.common.contracts import AgentInputRequest
-from agents.common.privacy import sanitize_url_for_external_llm
+from agents.common.privacy import (
+    sanitize_url_component_for_external_llm,
+    sanitize_url_for_external_llm,
+)
 from agents.common.traceability import AgentTracer
 from agents.orquestador.agent import OrquestadorAgent
 from agents.tools.preparation_tools import PreparationSessionContext
@@ -90,6 +93,39 @@ class ScriptedMockLLMClient:
 
     def __init__(self) -> None:
         self.models = ScriptedMockModels()
+
+
+class CapturingMockModels:
+    """Captura copias profundas (deepcopy) de cada solicitud en el momento exacto de la llamada."""
+    def __init__(self) -> None:
+        self.calls_history: List[Dict[str, Any]] = []
+
+    def generate_content(self, model: str, contents: List[Any], config: Any) -> MockLLMResponse:
+        import copy
+        self.calls_history.append({
+            "model": model,
+            "contents": copy.deepcopy(contents),
+            "config": copy.deepcopy(config) if config else config,
+        })
+        has_tool_response = False
+        for msg in contents:
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                for p in msg.get("parts", []):
+                    if isinstance(p, dict) and "function_response" in p:
+                        has_tool_response = True
+                        break
+        if has_tool_response:
+            return MockLLMResponse(text="Análisis de enlaces completado.")
+        return MockLLMResponse(
+            function_calls=[MockFunctionCall("tool_analizar_url", {"url_ids": ["ALL"]})]
+        )
+
+
+class CapturingMockLLMClient:
+    is_mock_client = True
+
+    def __init__(self) -> None:
+        self.models = CapturingMockModels()
 
 
 # =============================================================================
@@ -304,6 +340,209 @@ def test_pilot_functional_contract_equivalence_synthetic_cases():
 # =============================================================================
 # 3. Privacidad y Enmascaramiento de Credenciales y Parámetros Sensibles
 # =============================================================================
+
+def test_regression_url_query_evidence_leak_without_at_symbol():
+    """
+    Prueba de regresión para verificar y prevenir la exposición de parámetros sensibles
+    en la evidencia de query strings aisladas sin '@', correos ni credenciales embebidas.
+    (Ej. https://ejemplo.com/ruta?token=SECRETO_FICTICIO_123&x=1)
+    """
+    from agents.tools.url_analysis_tools import (
+        execute_tool_analizar_url,
+        UrlAnalysisSessionState,
+    )
+
+    secret_value = "SECRETO_FICTICIO_123"
+    raw_url = f"https://ejemplo.com/ruta?token={secret_value}&x=1"
+    url_id = "URL-1"
+    masked_url = sanitize_url_for_external_llm(raw_url)[0]
+
+    # 1. Comprobación a nivel de función de sanitización con componente aislado de query
+    isolated_query = f"token={secret_value}&x=1"
+    sanitized_query, count = sanitize_url_for_external_llm(isolated_query)
+    assert secret_value not in sanitized_query, (
+        f"Fallo en sanitización de query aislada: '{sanitized_query}' conserva '{secret_value}'."
+    )
+    sanitized_comp, comp_count = sanitize_url_component_for_external_llm(isolated_query)
+    assert secret_value not in sanitized_comp
+
+    # 2. Comprobación de la salida de la herramienta que se entrega al modelo
+    ctx = PreparationSessionContext(
+        input_mode="text",
+        raw_input_text=raw_url,
+        validation_done=True,
+        is_input_valid=True,
+        links_extracted=True,
+        extracted_urls=[raw_url],
+        url_id_map={url_id: raw_url},
+        masked_url_id_map={url_id: masked_url},
+    )
+    url_state = UrlAnalysisSessionState()
+    tool_output = execute_tool_analizar_url(ctx, url_state, {"url_ids": [url_id]})
+    tool_output_json = json.dumps(tool_output, ensure_ascii=False)
+    assert secret_value not in tool_output_json, (
+        f"Fallo en tool_analizar_url: el secreto '{secret_value}' se expone en la salida enviada al modelo."
+    )
+
+    # 3. Comprobación de solicitudes completas capturadas en el momento de la llamada
+    capturing_client = CapturingMockLLMClient()
+    tracer = AgentTracer()
+    agent = AnalizadorEnlacesAgent(llm_client=capturing_client)
+    result = agent.run(ctx, tracer=tracer)
+
+    # El secreto no debe aparecer en ninguna solicitud hacia el modelo
+    serialized_requests = json.dumps(capturing_client.models.calls_history, ensure_ascii=False)
+    assert secret_value not in serialized_requests, (
+        f"Fallo en el ciclo del agente: '{secret_value}' apareció en las solicitudes enviadas al LLM."
+    )
+
+    # 4. Conservación de la evidencia literal en el estado local del contrato
+    assert result.estado == "correcto"
+    assert result.cantidad_enlaces_procesados == 1
+    item = result.enlaces_analizados[0]
+    # En el estado local, la evidencia literal se preserva intacta para auditoría
+    assert any(secret_value in s.evidencia for s in item.senales_encontradas), (
+        "La evidencia literal en memoria local fue alterada indebidamente."
+    )
+
+
+@pytest.mark.parametrize(
+    "case_id,raw_url,isolated_query,expected_secrets,expected_conserved_tokens,has_sensitive_params",
+    [
+        (
+            "isolated_param_no_at",
+            "https://ejemplo.com/ruta?token=SECRETO_FICTICIO_123&x=1",
+            "token=SECRETO_FICTICIO_123&x=1",
+            ["SECRETO_FICTICIO_123"],
+            ["token=", "x=1"],
+            True,
+        ),
+        (
+            "multiple_sensitive_and_one_nonsensitive",
+            "https://ejemplo.com/api?token=TOKEN_A&clave=CLAVE_B&user=USER_C&page=2",
+            "token=TOKEN_A&clave=CLAVE_B&user=USER_C&page=2",
+            ["TOKEN_A", "CLAVE_B", "USER_C"],
+            ["token=", "clave=", "user=", "page=2"],
+            True,
+        ),
+        (
+            "percent_encoded_values",
+            "https://ejemplo.com/auth?token=SECRETO%20ESPACIO%20123&pwd=CLAVE%21%23&sort=asc",
+            "token=SECRETO%20ESPACIO%20123&pwd=CLAVE%21%23&sort=asc",
+            ["SECRETO%20ESPACIO%20123", "CLAVE%21%23"],
+            ["token=", "pwd=", "sort=asc"],
+            True,
+        ),
+        (
+            "embedded_credentials_and_email",
+            "https://usuario_admin:clave_super_secreta_999@servidor-sospechoso.com/panel?email=victima@empresa.com&token=XYZ_TOKEN_SECRETO_123&seccion=perfil",
+            "email=victima@empresa.com&token=XYZ_TOKEN_SECRETO_123&seccion=perfil",
+            ["usuario_admin", "clave_super_secreta_999", "victima@empresa.com", "XYZ_TOKEN_SECRETO_123"],
+            ["servidor-sospechoso.com", "seccion=perfil"],
+            True,
+        ),
+        (
+            "url_without_sensitive_params",
+            "https://ejemplo.com/seguro?categoria=noticias&seccion=general&page=3",
+            "categoria=noticias&seccion=general&page=3",
+            [],
+            ["categoria=noticias", "seccion=general", "page=3"],
+            False,
+        ),
+    ],
+)
+def test_parameterized_url_query_privacy_and_local_evidence_preservation(
+    case_id: str,
+    raw_url: str,
+    isolated_query: str,
+    expected_secrets: List[str],
+    expected_conserved_tokens: List[str],
+    has_sensitive_params: bool,
+):
+    """
+    Matriz de pruebas parametrizadas para validar:
+    1. Parámetro sensible aislado en query sin '@'.
+    2. Múltiples parámetros sensibles y al menos uno no sensible en una misma query.
+    3. Valores con codificación porciento (%20, %21, etc.).
+    4. Caso preexistente: URL con correo y credenciales embebidas (no regresión).
+    5. URL sin parámetros sensibles (sin falsos positivos de enmascaramiento).
+    6. Conservación de evidencia literal en el estado local tras el enmascaramiento externo.
+    """
+    from agents.tools.url_analysis_tools import (
+        execute_tool_analizar_url,
+        UrlAnalysisSessionState,
+    )
+
+    url_id = "URL-TEST-1"
+    masked_url, url_redactions = sanitize_url_for_external_llm(raw_url)
+    sanitized_query, query_redactions = sanitize_url_component_for_external_llm(isolated_query)
+
+    # 1. Verificación de enmascaramiento a nivel de sanitizadores
+    for secret in expected_secrets:
+        assert secret not in masked_url, f"[{case_id}] Secreto '{secret}' expuesto en masked_url: {masked_url}"
+        assert secret not in sanitized_query, f"[{case_id}] Secreto '{secret}' expuesto en sanitized_query: {sanitized_query}"
+
+    for token in expected_conserved_tokens:
+        assert token in masked_url or token in sanitized_query, (
+            f"[{case_id}] Token legítimo '{token}' fue alterado indebidamente."
+        )
+
+    if not expected_secrets:
+        assert url_redactions == 0
+        assert query_redactions == 0
+        assert masked_url == raw_url
+        assert sanitized_query == isolated_query
+    else:
+        assert url_redactions > 0
+        assert query_redactions > 0
+
+    # 2. Verificación de salida de tool_analizar_url
+    ctx = PreparationSessionContext(
+        input_mode="text",
+        raw_input_text=raw_url,
+        validation_done=True,
+        is_input_valid=True,
+        links_extracted=True,
+        extracted_urls=[raw_url],
+        url_id_map={url_id: raw_url},
+        masked_url_id_map={url_id: masked_url},
+    )
+    url_state = UrlAnalysisSessionState()
+    tool_output = execute_tool_analizar_url(ctx, url_state, {"url_ids": [url_id]})
+    tool_output_json = json.dumps(tool_output, ensure_ascii=False)
+
+    for secret in expected_secrets:
+        assert secret not in tool_output_json, (
+            f"[{case_id}] Secreto '{secret}' expuesto en la salida de tool_analizar_url: {tool_output_json}"
+        )
+
+    # 3. Verificación de captura profunda en el momento de la llamada al modelo LLM
+    capturing_client = CapturingMockLLMClient()
+    tracer = AgentTracer()
+    agent = AnalizadorEnlacesAgent(llm_client=capturing_client)
+    result = agent.run(ctx, tracer=tracer)
+
+    assert result.estado == "correcto"
+    assert result.cantidad_enlaces_procesados == 1
+
+    # Asegurar que ninguna solicitud hacia el modelo contenga los secretos
+    serialized_requests = json.dumps(capturing_client.models.calls_history, ensure_ascii=False)
+    for secret in expected_secrets:
+        assert secret not in serialized_requests, (
+            f"[{case_id}] Secreto '{secret}' expuesto en llamadas hacia el LLM: {serialized_requests}"
+        )
+
+    # 4. Conservación de evidencia literal en el estado local del contrato
+    result.validate()  # Valida consistencia completa del contrato
+    item = result.enlaces_analizados[0]
+    if has_sensitive_params:
+        # En memoria local, la evidencia literal debe mantenerse intacta
+        assert any(
+            any(sec in s.evidencia for sec in expected_secrets)
+            for s in item.senales_encontradas
+        ), f"[{case_id}] La evidencia literal en memoria local no conservó los secretos originales."
+
+
 
 def test_url_privacy_sanitization_in_prompt_and_tool_exchange():
     """
