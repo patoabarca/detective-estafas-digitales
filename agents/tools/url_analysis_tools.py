@@ -40,6 +40,7 @@ from agents.common.contracts import (
 )
 from agents.common.privacy import (
     sanitize_text_for_external_llm,
+    sanitize_url_component_for_external_llm,
     sanitize_url_for_external_llm,
 )
 from agents.tools.preparation_tools import PreparationSessionContext
@@ -522,7 +523,10 @@ def execute_tool_analizar_url(
             "total_session_links": len(prep_ctx.url_id_map),
             "results": sanitized_results_for_llm,
             "warnings": [
-                sanitize_text_for_external_llm(w).masked_text for w in url_state.warnings
+                sanitize_text_for_external_llm(
+                    sanitize_url_component_for_external_llm(w)[0]
+                ).masked_text
+                for w in url_state.warnings
             ],
             "error_message": None,
         }
@@ -550,7 +554,7 @@ def _build_sanitized_item_for_llm(item: UrlItemAnalysisResult) -> Dict[str, Any]
     """
     safe_signals = []
     for s in item.senales_encontradas:
-        safe_ev = sanitize_url_for_external_llm(s.evidencia)[0]
+        safe_ev = sanitize_url_component_for_external_llm(s.evidencia)[0]
         safe_ev = sanitize_text_for_external_llm(safe_ev).masked_text
         safe_desc = sanitize_text_for_external_llm(s.descripcion).masked_text
         safe_signals.append(
@@ -570,7 +574,10 @@ def _build_sanitized_item_for_llm(item: UrlItemAnalysisResult) -> Dict[str, Any]
         "reglas_activadas": list(item.reglas_activadas),
         "senales_encontradas": safe_signals,
         "advertencias": [
-            sanitize_text_for_external_llm(w).masked_text for w in item.advertencias
+            sanitize_text_for_external_llm(
+                sanitize_url_component_for_external_llm(w)[0]
+            ).masked_text
+            for w in item.advertencias
         ],
     }
 
