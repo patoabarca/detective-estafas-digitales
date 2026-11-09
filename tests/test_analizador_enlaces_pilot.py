@@ -157,10 +157,12 @@ def test_pilot_system_instruction_context_reduction():
     byte_pct_reduction = (byte_reduction / BASELINE_BUILD_SYSTEM_INSTRUCTION_BYTES) * 100.0
 
     # Verificaciones cuantitativas exactas
-    assert pilot_chars == 3457, f"Caracteres efectivos inesperados: {pilot_chars}"
-    assert pilot_bytes == 3513, f"Bytes efectivos inesperados: {pilot_bytes}"
-    assert char_reduction == 2494, f"Diferencia de caracteres inesperada: {char_reduction}"
-    assert byte_reduction == 2523, f"Diferencia de bytes inesperada: {byte_reduction}"
+    # Actualizado en Tarea 2 (B2): desduplicación de instrucciones entre prompts.py y SKILL.md,
+    # y remoción de orden de consulta a archivo local de referencia.
+    assert pilot_chars == 2273, f"Caracteres efectivos inesperados: {pilot_chars}"
+    assert pilot_bytes == 2304, f"Bytes efectivos inesperados: {pilot_bytes}"
+    assert char_reduction == 3678, f"Diferencia de caracteres inesperada: {char_reduction}"
+    assert byte_reduction == 3732, f"Diferencia de bytes inesperada: {byte_reduction}"
     assert char_pct_reduction >= 40.0, f"Reducción porcentual insuficiente: {char_pct_reduction:.2f}%"
     assert byte_pct_reduction >= 40.0, f"Reducción porcentual insuficiente: {byte_pct_reduction:.2f}%"
 
