@@ -1,0 +1,2615 @@
+{
+  "metadata": {
+    "title": "Línea Base Reproducible de Contexto Efectivamente Enviado",
+    "version": "3.0",
+    "methodology": "Simulación determinística de clientes LLM sin consumo de red ni datos reales",
+    "unit_of_measurement": "Caracteres (len(str)) y Bytes UTF-8 (len(str.encode('utf-8')))",
+    "disclaimer": "Aclaración obligatoria: Estos resultados describen los recorridos programados del cliente simulado; no demuestran cuántos turnos ni tokens usará Gemini real."
+  },
+  "scenarios": [
+    {
+      "scenario_id": "ESC-01",
+      "scenario_name": "Texto sin enlaces",
+      "input_mode": "text",
+      "agents_involved": [
+        "orquestador",
+        "preparador",
+        "analizador_mensajes",
+        "evaluador"
+      ],
+      "total_simulated_turns": 14,
+      "accumulated_request_chars": 219594,
+      "accumulated_request_bytes_utf8": 222168,
+      "by_agent": {
+        "orquestador": {
+          "turns_count": 4,
+          "total_chars": 24399,
+          "total_bytes_utf8": 24669,
+          "turns": [
+            {
+              "agent": "orquestador",
+              "turn_index": 1,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 472,
+                "bytes_utf8": 477
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 5107,
+                "bytes_utf8": 5174
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 5,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 1117,
+                "bytes_utf8": 1122
+              },
+              "tool_responses_breakdown": {
+                "chars": 502,
+                "bytes_utf8": 502
+              },
+              "total_request": {
+                "chars": 5752,
+                "bytes_utf8": 5819
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 8,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 1880,
+                "bytes_utf8": 1885
+              },
+              "tool_responses_breakdown": {
+                "chars": 1112,
+                "bytes_utf8": 1112
+              },
+              "total_request": {
+                "chars": 6515,
+                "bytes_utf8": 6582
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 14,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 2390,
+                "bytes_utf8": 2397
+              },
+              "tool_responses_breakdown": {
+                "chars": 1444,
+                "bytes_utf8": 1446
+              },
+              "total_request": {
+                "chars": 7025,
+                "bytes_utf8": 7094
+              }
+            }
+          ]
+        },
+        "preparador": {
+          "turns_count": 3,
+          "total_chars": 35135,
+          "total_bytes_utf8": 35549,
+          "turns": [
+            {
+              "agent": "preparador",
+              "turn_index": 2,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 9727,
+                "bytes_utf8": 9855
+              },
+              "tool_declarations": {
+                "chars": 1175,
+                "bytes_utf8": 1182
+              },
+              "contents": {
+                "chars": 318,
+                "bytes_utf8": 321
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 11220,
+                "bytes_utf8": 11358
+              }
+            },
+            {
+              "agent": "preparador",
+              "turn_index": 3,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 9727,
+                "bytes_utf8": 9855
+              },
+              "tool_declarations": {
+                "chars": 1175,
+                "bytes_utf8": 1182
+              },
+              "contents": {
+                "chars": 894,
+                "bytes_utf8": 897
+              },
+              "tool_responses_breakdown": {
+                "chars": 432,
+                "bytes_utf8": 432
+              },
+              "total_request": {
+                "chars": 11796,
+                "bytes_utf8": 11934
+              }
+            },
+            {
+              "agent": "preparador",
+              "turn_index": 4,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 9727,
+                "bytes_utf8": 9855
+              },
+              "tool_declarations": {
+                "chars": 1175,
+                "bytes_utf8": 1182
+              },
+              "contents": {
+                "chars": 1217,
+                "bytes_utf8": 1220
+              },
+              "tool_responses_breakdown": {
+                "chars": 599,
+                "bytes_utf8": 599
+              },
+              "total_request": {
+                "chars": 12119,
+                "bytes_utf8": 12257
+              }
+            }
+          ]
+        },
+        "analizador_mensajes": {
+          "turns_count": 2,
+          "total_chars": 31702,
+          "total_bytes_utf8": 32062,
+          "turns": [
+            {
+              "agent": "analizador_mensajes",
+              "turn_index": 6,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 12205,
+                "bytes_utf8": 12355
+              },
+              "tool_declarations": {
+                "chars": 2052,
+                "bytes_utf8": 2072
+              },
+              "contents": {
+                "chars": 788,
+                "bytes_utf8": 798
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 15045,
+                "bytes_utf8": 15225
+              }
+            },
+            {
+              "agent": "analizador_mensajes",
+              "turn_index": 7,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 12205,
+                "bytes_utf8": 12355
+              },
+              "tool_declarations": {
+                "chars": 2052,
+                "bytes_utf8": 2072
+              },
+              "contents": {
+                "chars": 2400,
+                "bytes_utf8": 2410
+              },
+              "tool_responses_breakdown": {
+                "chars": 1076,
+                "bytes_utf8": 1076
+              },
+              "total_request": {
+                "chars": 16657,
+                "bytes_utf8": 16837
+              }
+            }
+          ]
+        },
+        "evaluador": {
+          "turns_count": 5,
+          "total_chars": 128358,
+          "total_bytes_utf8": 129888,
+          "turns": [
+            {
+              "agent": "evaluador",
+              "turn_index": 9,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 686,
+                "bytes_utf8": 698
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 24877,
+                "bytes_utf8": 25180
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 10,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 1011,
+                "bytes_utf8": 1023
+              },
+              "tool_responses_breakdown": {
+                "chars": 177,
+                "bytes_utf8": 177
+              },
+              "total_request": {
+                "chars": 25202,
+                "bytes_utf8": 25505
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 11,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 1304,
+                "bytes_utf8": 1316
+              },
+              "tool_responses_breakdown": {
+                "chars": 320,
+                "bytes_utf8": 320
+              },
+              "total_request": {
+                "chars": 25495,
+                "bytes_utf8": 25798
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 12,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 1720,
+                "bytes_utf8": 1734
+              },
+              "tool_responses_breakdown": {
+                "chars": 584,
+                "bytes_utf8": 586
+              },
+              "total_request": {
+                "chars": 25911,
+                "bytes_utf8": 26216
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 13,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 2682,
+                "bytes_utf8": 2707
+              },
+              "tool_responses_breakdown": {
+                "chars": 1291,
+                "bytes_utf8": 1304
+              },
+              "total_request": {
+                "chars": 26873,
+                "bytes_utf8": 27189
+              }
+            }
+          ]
+        }
+      },
+      "snapshots": [
+        {
+          "agent": "orquestador",
+          "turn_index": 1,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 472,
+            "bytes_utf8": 477
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 5107,
+            "bytes_utf8": 5174
+          }
+        },
+        {
+          "agent": "preparador",
+          "turn_index": 2,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 9727,
+            "bytes_utf8": 9855
+          },
+          "tool_declarations": {
+            "chars": 1175,
+            "bytes_utf8": 1182
+          },
+          "contents": {
+            "chars": 318,
+            "bytes_utf8": 321
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 11220,
+            "bytes_utf8": 11358
+          }
+        },
+        {
+          "agent": "preparador",
+          "turn_index": 3,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 9727,
+            "bytes_utf8": 9855
+          },
+          "tool_declarations": {
+            "chars": 1175,
+            "bytes_utf8": 1182
+          },
+          "contents": {
+            "chars": 894,
+            "bytes_utf8": 897
+          },
+          "tool_responses_breakdown": {
+            "chars": 432,
+            "bytes_utf8": 432
+          },
+          "total_request": {
+            "chars": 11796,
+            "bytes_utf8": 11934
+          }
+        },
+        {
+          "agent": "preparador",
+          "turn_index": 4,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 9727,
+            "bytes_utf8": 9855
+          },
+          "tool_declarations": {
+            "chars": 1175,
+            "bytes_utf8": 1182
+          },
+          "contents": {
+            "chars": 1217,
+            "bytes_utf8": 1220
+          },
+          "tool_responses_breakdown": {
+            "chars": 599,
+            "bytes_utf8": 599
+          },
+          "total_request": {
+            "chars": 12119,
+            "bytes_utf8": 12257
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 5,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 1117,
+            "bytes_utf8": 1122
+          },
+          "tool_responses_breakdown": {
+            "chars": 502,
+            "bytes_utf8": 502
+          },
+          "total_request": {
+            "chars": 5752,
+            "bytes_utf8": 5819
+          }
+        },
+        {
+          "agent": "analizador_mensajes",
+          "turn_index": 6,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 12205,
+            "bytes_utf8": 12355
+          },
+          "tool_declarations": {
+            "chars": 2052,
+            "bytes_utf8": 2072
+          },
+          "contents": {
+            "chars": 788,
+            "bytes_utf8": 798
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 15045,
+            "bytes_utf8": 15225
+          }
+        },
+        {
+          "agent": "analizador_mensajes",
+          "turn_index": 7,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 12205,
+            "bytes_utf8": 12355
+          },
+          "tool_declarations": {
+            "chars": 2052,
+            "bytes_utf8": 2072
+          },
+          "contents": {
+            "chars": 2400,
+            "bytes_utf8": 2410
+          },
+          "tool_responses_breakdown": {
+            "chars": 1076,
+            "bytes_utf8": 1076
+          },
+          "total_request": {
+            "chars": 16657,
+            "bytes_utf8": 16837
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 8,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 1880,
+            "bytes_utf8": 1885
+          },
+          "tool_responses_breakdown": {
+            "chars": 1112,
+            "bytes_utf8": 1112
+          },
+          "total_request": {
+            "chars": 6515,
+            "bytes_utf8": 6582
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 9,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 686,
+            "bytes_utf8": 698
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 24877,
+            "bytes_utf8": 25180
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 10,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 1011,
+            "bytes_utf8": 1023
+          },
+          "tool_responses_breakdown": {
+            "chars": 177,
+            "bytes_utf8": 177
+          },
+          "total_request": {
+            "chars": 25202,
+            "bytes_utf8": 25505
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 11,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 1304,
+            "bytes_utf8": 1316
+          },
+          "tool_responses_breakdown": {
+            "chars": 320,
+            "bytes_utf8": 320
+          },
+          "total_request": {
+            "chars": 25495,
+            "bytes_utf8": 25798
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 12,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 1720,
+            "bytes_utf8": 1734
+          },
+          "tool_responses_breakdown": {
+            "chars": 584,
+            "bytes_utf8": 586
+          },
+          "total_request": {
+            "chars": 25911,
+            "bytes_utf8": 26216
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 13,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 2682,
+            "bytes_utf8": 2707
+          },
+          "tool_responses_breakdown": {
+            "chars": 1291,
+            "bytes_utf8": 1304
+          },
+          "total_request": {
+            "chars": 26873,
+            "bytes_utf8": 27189
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 14,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 2390,
+            "bytes_utf8": 2397
+          },
+          "tool_responses_breakdown": {
+            "chars": 1444,
+            "bytes_utf8": 1446
+          },
+          "total_request": {
+            "chars": 7025,
+            "bytes_utf8": 7094
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "ESC-02",
+      "scenario_name": "Texto con dos enlaces ficticios",
+      "input_mode": "text",
+      "agents_involved": [
+        "orquestador",
+        "preparador",
+        "analizador_mensajes",
+        "analizador_enlaces",
+        "evaluador"
+      ],
+      "total_simulated_turns": 17,
+      "accumulated_request_chars": 242764,
+      "accumulated_request_bytes_utf8": 245574,
+      "by_agent": {
+        "orquestador": {
+          "turns_count": 5,
+          "total_chars": 34701,
+          "total_bytes_utf8": 35061,
+          "turns": [
+            {
+              "agent": "orquestador",
+              "turn_index": 1,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 472,
+                "bytes_utf8": 477
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 5107,
+                "bytes_utf8": 5174
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 5,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 1296,
+                "bytes_utf8": 1302
+              },
+              "tool_responses_breakdown": {
+                "chars": 681,
+                "bytes_utf8": 682
+              },
+              "total_request": {
+                "chars": 5931,
+                "bytes_utf8": 5999
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 8,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 2293,
+                "bytes_utf8": 2300
+              },
+              "tool_responses_breakdown": {
+                "chars": 1525,
+                "bytes_utf8": 1527
+              },
+              "total_request": {
+                "chars": 6928,
+                "bytes_utf8": 6997
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 11,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 3352,
+                "bytes_utf8": 3365
+              },
+              "tool_responses_breakdown": {
+                "chars": 2426,
+                "bytes_utf8": 2434
+              },
+              "total_request": {
+                "chars": 7987,
+                "bytes_utf8": 8062
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 17,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 4113,
+                "bytes_utf8": 4132
+              },
+              "tool_responses_breakdown": {
+                "chars": 3009,
+                "bytes_utf8": 3023
+              },
+              "total_request": {
+                "chars": 8748,
+                "bytes_utf8": 8829
+              }
+            }
+          ]
+        },
+        "preparador": {
+          "turns_count": 3,
+          "total_chars": 35389,
+          "total_bytes_utf8": 35805,
+          "turns": [
+            {
+              "agent": "preparador",
+              "turn_index": 2,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 9727,
+                "bytes_utf8": 9855
+              },
+              "tool_declarations": {
+                "chars": 1175,
+                "bytes_utf8": 1182
+              },
+              "contents": {
+                "chars": 318,
+                "bytes_utf8": 321
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 11220,
+                "bytes_utf8": 11358
+              }
+            },
+            {
+              "agent": "preparador",
+              "turn_index": 3,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 9727,
+                "bytes_utf8": 9855
+              },
+              "tool_declarations": {
+                "chars": 1175,
+                "bytes_utf8": 1182
+              },
+              "contents": {
+                "chars": 975,
+                "bytes_utf8": 979
+              },
+              "tool_responses_breakdown": {
+                "chars": 513,
+                "bytes_utf8": 514
+              },
+              "total_request": {
+                "chars": 11877,
+                "bytes_utf8": 12016
+              }
+            },
+            {
+              "agent": "preparador",
+              "turn_index": 4,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 9727,
+                "bytes_utf8": 9855
+              },
+              "tool_declarations": {
+                "chars": 1175,
+                "bytes_utf8": 1182
+              },
+              "contents": {
+                "chars": 1390,
+                "bytes_utf8": 1394
+              },
+              "tool_responses_breakdown": {
+                "chars": 772,
+                "bytes_utf8": 773
+              },
+              "total_request": {
+                "chars": 12292,
+                "bytes_utf8": 12431
+              }
+            }
+          ]
+        },
+        "analizador_mensajes": {
+          "turns_count": 2,
+          "total_chars": 32240,
+          "total_bytes_utf8": 32605,
+          "turns": [
+            {
+              "agent": "analizador_mensajes",
+              "turn_index": 6,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 12205,
+                "bytes_utf8": 12355
+              },
+              "tool_declarations": {
+                "chars": 2052,
+                "bytes_utf8": 2072
+              },
+              "contents": {
+                "chars": 869,
+                "bytes_utf8": 880
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 15126,
+                "bytes_utf8": 15307
+              }
+            },
+            {
+              "agent": "analizador_mensajes",
+              "turn_index": 7,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 12205,
+                "bytes_utf8": 12355
+              },
+              "tool_declarations": {
+                "chars": 2052,
+                "bytes_utf8": 2072
+              },
+              "contents": {
+                "chars": 2857,
+                "bytes_utf8": 2871
+              },
+              "tool_responses_breakdown": {
+                "chars": 1452,
+                "bytes_utf8": 1455
+              },
+              "total_request": {
+                "chars": 17114,
+                "bytes_utf8": 17298
+              }
+            }
+          ]
+        },
+        "analizador_enlaces": {
+          "turns_count": 2,
+          "total_chars": 8326,
+          "total_bytes_utf8": 8423,
+          "turns": [
+            {
+              "agent": "analizador_enlaces",
+              "turn_index": 9,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2273,
+                "bytes_utf8": 2304
+              },
+              "tool_declarations": {
+                "chars": 490,
+                "bytes_utf8": 495
+              },
+              "contents": {
+                "chars": 628,
+                "bytes_utf8": 633
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 3391,
+                "bytes_utf8": 3432
+              }
+            },
+            {
+              "agent": "analizador_enlaces",
+              "turn_index": 10,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2273,
+                "bytes_utf8": 2304
+              },
+              "tool_declarations": {
+                "chars": 490,
+                "bytes_utf8": 495
+              },
+              "contents": {
+                "chars": 2172,
+                "bytes_utf8": 2192
+              },
+              "tool_responses_breakdown": {
+                "chars": 1395,
+                "bytes_utf8": 1410
+              },
+              "total_request": {
+                "chars": 4935,
+                "bytes_utf8": 4991
+              }
+            }
+          ]
+        },
+        "evaluador": {
+          "turns_count": 5,
+          "total_chars": 132108,
+          "total_bytes_utf8": 133680,
+          "turns": [
+            {
+              "agent": "evaluador",
+              "turn_index": 12,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 686,
+                "bytes_utf8": 698
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 24877,
+                "bytes_utf8": 25180
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 13,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 1651,
+                "bytes_utf8": 1668
+              },
+              "tool_responses_breakdown": {
+                "chars": 817,
+                "bytes_utf8": 822
+              },
+              "total_request": {
+                "chars": 25842,
+                "bytes_utf8": 26150
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 14,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 2214,
+                "bytes_utf8": 2234
+              },
+              "tool_responses_breakdown": {
+                "chars": 1230,
+                "bytes_utf8": 1238
+              },
+              "total_request": {
+                "chars": 26405,
+                "bytes_utf8": 26716
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 15,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 2612,
+                "bytes_utf8": 2635
+              },
+              "tool_responses_breakdown": {
+                "chars": 1476,
+                "bytes_utf8": 1487
+              },
+              "total_request": {
+                "chars": 26803,
+                "bytes_utf8": 27117
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 16,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 3990,
+                "bytes_utf8": 4035
+              },
+              "tool_responses_breakdown": {
+                "chars": 2599,
+                "bytes_utf8": 2632
+              },
+              "total_request": {
+                "chars": 28181,
+                "bytes_utf8": 28517
+              }
+            }
+          ]
+        }
+      },
+      "snapshots": [
+        {
+          "agent": "orquestador",
+          "turn_index": 1,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 472,
+            "bytes_utf8": 477
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 5107,
+            "bytes_utf8": 5174
+          }
+        },
+        {
+          "agent": "preparador",
+          "turn_index": 2,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 9727,
+            "bytes_utf8": 9855
+          },
+          "tool_declarations": {
+            "chars": 1175,
+            "bytes_utf8": 1182
+          },
+          "contents": {
+            "chars": 318,
+            "bytes_utf8": 321
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 11220,
+            "bytes_utf8": 11358
+          }
+        },
+        {
+          "agent": "preparador",
+          "turn_index": 3,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 9727,
+            "bytes_utf8": 9855
+          },
+          "tool_declarations": {
+            "chars": 1175,
+            "bytes_utf8": 1182
+          },
+          "contents": {
+            "chars": 975,
+            "bytes_utf8": 979
+          },
+          "tool_responses_breakdown": {
+            "chars": 513,
+            "bytes_utf8": 514
+          },
+          "total_request": {
+            "chars": 11877,
+            "bytes_utf8": 12016
+          }
+        },
+        {
+          "agent": "preparador",
+          "turn_index": 4,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 9727,
+            "bytes_utf8": 9855
+          },
+          "tool_declarations": {
+            "chars": 1175,
+            "bytes_utf8": 1182
+          },
+          "contents": {
+            "chars": 1390,
+            "bytes_utf8": 1394
+          },
+          "tool_responses_breakdown": {
+            "chars": 772,
+            "bytes_utf8": 773
+          },
+          "total_request": {
+            "chars": 12292,
+            "bytes_utf8": 12431
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 5,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 1296,
+            "bytes_utf8": 1302
+          },
+          "tool_responses_breakdown": {
+            "chars": 681,
+            "bytes_utf8": 682
+          },
+          "total_request": {
+            "chars": 5931,
+            "bytes_utf8": 5999
+          }
+        },
+        {
+          "agent": "analizador_mensajes",
+          "turn_index": 6,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 12205,
+            "bytes_utf8": 12355
+          },
+          "tool_declarations": {
+            "chars": 2052,
+            "bytes_utf8": 2072
+          },
+          "contents": {
+            "chars": 869,
+            "bytes_utf8": 880
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 15126,
+            "bytes_utf8": 15307
+          }
+        },
+        {
+          "agent": "analizador_mensajes",
+          "turn_index": 7,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 12205,
+            "bytes_utf8": 12355
+          },
+          "tool_declarations": {
+            "chars": 2052,
+            "bytes_utf8": 2072
+          },
+          "contents": {
+            "chars": 2857,
+            "bytes_utf8": 2871
+          },
+          "tool_responses_breakdown": {
+            "chars": 1452,
+            "bytes_utf8": 1455
+          },
+          "total_request": {
+            "chars": 17114,
+            "bytes_utf8": 17298
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 8,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 2293,
+            "bytes_utf8": 2300
+          },
+          "tool_responses_breakdown": {
+            "chars": 1525,
+            "bytes_utf8": 1527
+          },
+          "total_request": {
+            "chars": 6928,
+            "bytes_utf8": 6997
+          }
+        },
+        {
+          "agent": "analizador_enlaces",
+          "turn_index": 9,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2273,
+            "bytes_utf8": 2304
+          },
+          "tool_declarations": {
+            "chars": 490,
+            "bytes_utf8": 495
+          },
+          "contents": {
+            "chars": 628,
+            "bytes_utf8": 633
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 3391,
+            "bytes_utf8": 3432
+          }
+        },
+        {
+          "agent": "analizador_enlaces",
+          "turn_index": 10,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2273,
+            "bytes_utf8": 2304
+          },
+          "tool_declarations": {
+            "chars": 490,
+            "bytes_utf8": 495
+          },
+          "contents": {
+            "chars": 2172,
+            "bytes_utf8": 2192
+          },
+          "tool_responses_breakdown": {
+            "chars": 1395,
+            "bytes_utf8": 1410
+          },
+          "total_request": {
+            "chars": 4935,
+            "bytes_utf8": 4991
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 11,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 3352,
+            "bytes_utf8": 3365
+          },
+          "tool_responses_breakdown": {
+            "chars": 2426,
+            "bytes_utf8": 2434
+          },
+          "total_request": {
+            "chars": 7987,
+            "bytes_utf8": 8062
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 12,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 686,
+            "bytes_utf8": 698
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 24877,
+            "bytes_utf8": 25180
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 13,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 1651,
+            "bytes_utf8": 1668
+          },
+          "tool_responses_breakdown": {
+            "chars": 817,
+            "bytes_utf8": 822
+          },
+          "total_request": {
+            "chars": 25842,
+            "bytes_utf8": 26150
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 14,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 2214,
+            "bytes_utf8": 2234
+          },
+          "tool_responses_breakdown": {
+            "chars": 1230,
+            "bytes_utf8": 1238
+          },
+          "total_request": {
+            "chars": 26405,
+            "bytes_utf8": 26716
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 15,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 2612,
+            "bytes_utf8": 2635
+          },
+          "tool_responses_breakdown": {
+            "chars": 1476,
+            "bytes_utf8": 1487
+          },
+          "total_request": {
+            "chars": 26803,
+            "bytes_utf8": 27117
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 16,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 3990,
+            "bytes_utf8": 4035
+          },
+          "tool_responses_breakdown": {
+            "chars": 2599,
+            "bytes_utf8": 2632
+          },
+          "total_request": {
+            "chars": 28181,
+            "bytes_utf8": 28517
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 17,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 4113,
+            "bytes_utf8": 4132
+          },
+          "tool_responses_breakdown": {
+            "chars": 3009,
+            "bytes_utf8": 3023
+          },
+          "total_request": {
+            "chars": 8748,
+            "bytes_utf8": 8829
+          }
+        }
+      ]
+    },
+    {
+      "scenario_id": "ESC-03",
+      "scenario_name": "Captura con OCR simulado y enlace",
+      "input_mode": "ocr_screenshot",
+      "agents_involved": [
+        "orquestador",
+        "preparador",
+        "analizador_mensajes",
+        "analizador_enlaces",
+        "evaluador"
+      ],
+      "total_simulated_turns": 18,
+      "accumulated_request_chars": 251404,
+      "accumulated_request_bytes_utf8": 254341,
+      "by_agent": {
+        "orquestador": {
+          "turns_count": 5,
+          "total_chars": 33590,
+          "total_bytes_utf8": 33950,
+          "turns": [
+            {
+              "agent": "orquestador",
+              "turn_index": 1,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 482,
+                "bytes_utf8": 487
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 5117,
+                "bytes_utf8": 5184
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 6,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 1240,
+                "bytes_utf8": 1248
+              },
+              "tool_responses_breakdown": {
+                "chars": 605,
+                "bytes_utf8": 608
+              },
+              "total_request": {
+                "chars": 5875,
+                "bytes_utf8": 5945
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 9,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 2116,
+                "bytes_utf8": 2124
+              },
+              "tool_responses_breakdown": {
+                "chars": 1328,
+                "bytes_utf8": 1331
+              },
+              "total_request": {
+                "chars": 6751,
+                "bytes_utf8": 6821
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 12,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 2957,
+                "bytes_utf8": 2969
+              },
+              "tool_responses_breakdown": {
+                "chars": 2011,
+                "bytes_utf8": 2018
+              },
+              "total_request": {
+                "chars": 7592,
+                "bytes_utf8": 7666
+              }
+            },
+            {
+              "agent": "orquestador",
+              "turn_index": 18,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2490,
+                "bytes_utf8": 2529
+              },
+              "tool_declarations": {
+                "chars": 2145,
+                "bytes_utf8": 2168
+              },
+              "contents": {
+                "chars": 3620,
+                "bytes_utf8": 3637
+              },
+              "tool_responses_breakdown": {
+                "chars": 2496,
+                "bytes_utf8": 2508
+              },
+              "total_request": {
+                "chars": 8255,
+                "bytes_utf8": 8334
+              }
+            }
+          ]
+        },
+        "preparador": {
+          "turns_count": 4,
+          "total_chars": 47731,
+          "total_bytes_utf8": 48294,
+          "turns": [
+            {
+              "agent": "preparador",
+              "turn_index": 2,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 9727,
+                "bytes_utf8": 9855
+              },
+              "tool_declarations": {
+                "chars": 1175,
+                "bytes_utf8": 1182
+              },
+              "contents": {
+                "chars": 308,
+                "bytes_utf8": 312
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 11210,
+                "bytes_utf8": 11349
+              }
+            },
+            {
+              "agent": "preparador",
+              "turn_index": 3,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 9727,
+                "bytes_utf8": 9855
+              },
+              "tool_declarations": {
+                "chars": 1175,
+                "bytes_utf8": 1182
+              },
+              "contents": {
+                "chars": 705,
+                "bytes_utf8": 709
+              },
+              "tool_responses_breakdown": {
+                "chars": 243,
+                "bytes_utf8": 243
+              },
+              "total_request": {
+                "chars": 11607,
+                "bytes_utf8": 11746
+              }
+            },
+            {
+              "agent": "preparador",
+              "turn_index": 4,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 9727,
+                "bytes_utf8": 9855
+              },
+              "tool_declarations": {
+                "chars": 1175,
+                "bytes_utf8": 1182
+              },
+              "contents": {
+                "chars": 1354,
+                "bytes_utf8": 1361
+              },
+              "tool_responses_breakdown": {
+                "chars": 743,
+                "bytes_utf8": 746
+              },
+              "total_request": {
+                "chars": 12256,
+                "bytes_utf8": 12398
+              }
+            },
+            {
+              "agent": "preparador",
+              "turn_index": 5,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 9727,
+                "bytes_utf8": 9855
+              },
+              "tool_declarations": {
+                "chars": 1175,
+                "bytes_utf8": 1182
+              },
+              "contents": {
+                "chars": 1756,
+                "bytes_utf8": 1764
+              },
+              "tool_responses_breakdown": {
+                "chars": 989,
+                "bytes_utf8": 993
+              },
+              "total_request": {
+                "chars": 12658,
+                "bytes_utf8": 12801
+              }
+            }
+          ]
+        },
+        "analizador_mensajes": {
+          "turns_count": 2,
+          "total_chars": 31880,
+          "total_bytes_utf8": 32244,
+          "turns": [
+            {
+              "agent": "analizador_mensajes",
+              "turn_index": 7,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 12205,
+                "bytes_utf8": 12355
+              },
+              "tool_declarations": {
+                "chars": 2052,
+                "bytes_utf8": 2072
+              },
+              "contents": {
+                "chars": 796,
+                "bytes_utf8": 808
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 15053,
+                "bytes_utf8": 15235
+              }
+            },
+            {
+              "agent": "analizador_mensajes",
+              "turn_index": 8,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 12205,
+                "bytes_utf8": 12355
+              },
+              "tool_declarations": {
+                "chars": 2052,
+                "bytes_utf8": 2072
+              },
+              "contents": {
+                "chars": 2570,
+                "bytes_utf8": 2582
+              },
+              "tool_responses_breakdown": {
+                "chars": 1238,
+                "bytes_utf8": 1238
+              },
+              "total_request": {
+                "chars": 16827,
+                "bytes_utf8": 17009
+              }
+            }
+          ]
+        },
+        "analizador_enlaces": {
+          "turns_count": 2,
+          "total_chars": 7837,
+          "total_bytes_utf8": 7930,
+          "turns": [
+            {
+              "agent": "analizador_enlaces",
+              "turn_index": 10,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2273,
+                "bytes_utf8": 2304
+              },
+              "tool_declarations": {
+                "chars": 490,
+                "bytes_utf8": 495
+              },
+              "contents": {
+                "chars": 561,
+                "bytes_utf8": 566
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 3324,
+                "bytes_utf8": 3365
+              }
+            },
+            {
+              "agent": "analizador_enlaces",
+              "turn_index": 11,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 2273,
+                "bytes_utf8": 2304
+              },
+              "tool_declarations": {
+                "chars": 490,
+                "bytes_utf8": 495
+              },
+              "contents": {
+                "chars": 1750,
+                "bytes_utf8": 1766
+              },
+              "tool_responses_breakdown": {
+                "chars": 1048,
+                "bytes_utf8": 1059
+              },
+              "total_request": {
+                "chars": 4513,
+                "bytes_utf8": 4565
+              }
+            }
+          ]
+        },
+        "evaluador": {
+          "turns_count": 5,
+          "total_chars": 130366,
+          "total_bytes_utf8": 131923,
+          "turns": [
+            {
+              "agent": "evaluador",
+              "turn_index": 13,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 696,
+                "bytes_utf8": 708
+              },
+              "tool_responses_breakdown": {
+                "chars": 0,
+                "bytes_utf8": 0
+              },
+              "total_request": {
+                "chars": 24887,
+                "bytes_utf8": 25190
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 14,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 1330,
+                "bytes_utf8": 1345
+              },
+              "tool_responses_breakdown": {
+                "chars": 486,
+                "bytes_utf8": 489
+              },
+              "total_request": {
+                "chars": 25521,
+                "bytes_utf8": 25827
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 15,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 1784,
+                "bytes_utf8": 1801
+              },
+              "tool_responses_breakdown": {
+                "chars": 790,
+                "bytes_utf8": 795
+              },
+              "total_request": {
+                "chars": 25975,
+                "bytes_utf8": 26283
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 16,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 2193,
+                "bytes_utf8": 2213
+              },
+              "tool_responses_breakdown": {
+                "chars": 1047,
+                "bytes_utf8": 1055
+              },
+              "total_request": {
+                "chars": 26384,
+                "bytes_utf8": 26695
+              }
+            },
+            {
+              "agent": "evaluador",
+              "turn_index": 17,
+              "model": "gemini-3.5-flash-lite",
+              "system_instruction": {
+                "chars": 21707,
+                "bytes_utf8": 21986
+              },
+              "tool_declarations": {
+                "chars": 2484,
+                "bytes_utf8": 2496
+              },
+              "contents": {
+                "chars": 3408,
+                "bytes_utf8": 3446
+              },
+              "tool_responses_breakdown": {
+                "chars": 2007,
+                "bytes_utf8": 2033
+              },
+              "total_request": {
+                "chars": 27599,
+                "bytes_utf8": 27928
+              }
+            }
+          ]
+        }
+      },
+      "snapshots": [
+        {
+          "agent": "orquestador",
+          "turn_index": 1,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 482,
+            "bytes_utf8": 487
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 5117,
+            "bytes_utf8": 5184
+          }
+        },
+        {
+          "agent": "preparador",
+          "turn_index": 2,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 9727,
+            "bytes_utf8": 9855
+          },
+          "tool_declarations": {
+            "chars": 1175,
+            "bytes_utf8": 1182
+          },
+          "contents": {
+            "chars": 308,
+            "bytes_utf8": 312
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 11210,
+            "bytes_utf8": 11349
+          }
+        },
+        {
+          "agent": "preparador",
+          "turn_index": 3,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 9727,
+            "bytes_utf8": 9855
+          },
+          "tool_declarations": {
+            "chars": 1175,
+            "bytes_utf8": 1182
+          },
+          "contents": {
+            "chars": 705,
+            "bytes_utf8": 709
+          },
+          "tool_responses_breakdown": {
+            "chars": 243,
+            "bytes_utf8": 243
+          },
+          "total_request": {
+            "chars": 11607,
+            "bytes_utf8": 11746
+          }
+        },
+        {
+          "agent": "preparador",
+          "turn_index": 4,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 9727,
+            "bytes_utf8": 9855
+          },
+          "tool_declarations": {
+            "chars": 1175,
+            "bytes_utf8": 1182
+          },
+          "contents": {
+            "chars": 1354,
+            "bytes_utf8": 1361
+          },
+          "tool_responses_breakdown": {
+            "chars": 743,
+            "bytes_utf8": 746
+          },
+          "total_request": {
+            "chars": 12256,
+            "bytes_utf8": 12398
+          }
+        },
+        {
+          "agent": "preparador",
+          "turn_index": 5,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 9727,
+            "bytes_utf8": 9855
+          },
+          "tool_declarations": {
+            "chars": 1175,
+            "bytes_utf8": 1182
+          },
+          "contents": {
+            "chars": 1756,
+            "bytes_utf8": 1764
+          },
+          "tool_responses_breakdown": {
+            "chars": 989,
+            "bytes_utf8": 993
+          },
+          "total_request": {
+            "chars": 12658,
+            "bytes_utf8": 12801
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 6,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 1240,
+            "bytes_utf8": 1248
+          },
+          "tool_responses_breakdown": {
+            "chars": 605,
+            "bytes_utf8": 608
+          },
+          "total_request": {
+            "chars": 5875,
+            "bytes_utf8": 5945
+          }
+        },
+        {
+          "agent": "analizador_mensajes",
+          "turn_index": 7,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 12205,
+            "bytes_utf8": 12355
+          },
+          "tool_declarations": {
+            "chars": 2052,
+            "bytes_utf8": 2072
+          },
+          "contents": {
+            "chars": 796,
+            "bytes_utf8": 808
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 15053,
+            "bytes_utf8": 15235
+          }
+        },
+        {
+          "agent": "analizador_mensajes",
+          "turn_index": 8,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 12205,
+            "bytes_utf8": 12355
+          },
+          "tool_declarations": {
+            "chars": 2052,
+            "bytes_utf8": 2072
+          },
+          "contents": {
+            "chars": 2570,
+            "bytes_utf8": 2582
+          },
+          "tool_responses_breakdown": {
+            "chars": 1238,
+            "bytes_utf8": 1238
+          },
+          "total_request": {
+            "chars": 16827,
+            "bytes_utf8": 17009
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 9,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 2116,
+            "bytes_utf8": 2124
+          },
+          "tool_responses_breakdown": {
+            "chars": 1328,
+            "bytes_utf8": 1331
+          },
+          "total_request": {
+            "chars": 6751,
+            "bytes_utf8": 6821
+          }
+        },
+        {
+          "agent": "analizador_enlaces",
+          "turn_index": 10,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2273,
+            "bytes_utf8": 2304
+          },
+          "tool_declarations": {
+            "chars": 490,
+            "bytes_utf8": 495
+          },
+          "contents": {
+            "chars": 561,
+            "bytes_utf8": 566
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 3324,
+            "bytes_utf8": 3365
+          }
+        },
+        {
+          "agent": "analizador_enlaces",
+          "turn_index": 11,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2273,
+            "bytes_utf8": 2304
+          },
+          "tool_declarations": {
+            "chars": 490,
+            "bytes_utf8": 495
+          },
+          "contents": {
+            "chars": 1750,
+            "bytes_utf8": 1766
+          },
+          "tool_responses_breakdown": {
+            "chars": 1048,
+            "bytes_utf8": 1059
+          },
+          "total_request": {
+            "chars": 4513,
+            "bytes_utf8": 4565
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 12,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 2957,
+            "bytes_utf8": 2969
+          },
+          "tool_responses_breakdown": {
+            "chars": 2011,
+            "bytes_utf8": 2018
+          },
+          "total_request": {
+            "chars": 7592,
+            "bytes_utf8": 7666
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 13,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 696,
+            "bytes_utf8": 708
+          },
+          "tool_responses_breakdown": {
+            "chars": 0,
+            "bytes_utf8": 0
+          },
+          "total_request": {
+            "chars": 24887,
+            "bytes_utf8": 25190
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 14,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 1330,
+            "bytes_utf8": 1345
+          },
+          "tool_responses_breakdown": {
+            "chars": 486,
+            "bytes_utf8": 489
+          },
+          "total_request": {
+            "chars": 25521,
+            "bytes_utf8": 25827
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 15,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 1784,
+            "bytes_utf8": 1801
+          },
+          "tool_responses_breakdown": {
+            "chars": 790,
+            "bytes_utf8": 795
+          },
+          "total_request": {
+            "chars": 25975,
+            "bytes_utf8": 26283
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 16,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 2193,
+            "bytes_utf8": 2213
+          },
+          "tool_responses_breakdown": {
+            "chars": 1047,
+            "bytes_utf8": 1055
+          },
+          "total_request": {
+            "chars": 26384,
+            "bytes_utf8": 26695
+          }
+        },
+        {
+          "agent": "evaluador",
+          "turn_index": 17,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 21707,
+            "bytes_utf8": 21986
+          },
+          "tool_declarations": {
+            "chars": 2484,
+            "bytes_utf8": 2496
+          },
+          "contents": {
+            "chars": 3408,
+            "bytes_utf8": 3446
+          },
+          "tool_responses_breakdown": {
+            "chars": 2007,
+            "bytes_utf8": 2033
+          },
+          "total_request": {
+            "chars": 27599,
+            "bytes_utf8": 27928
+          }
+        },
+        {
+          "agent": "orquestador",
+          "turn_index": 18,
+          "model": "gemini-3.5-flash-lite",
+          "system_instruction": {
+            "chars": 2490,
+            "bytes_utf8": 2529
+          },
+          "tool_declarations": {
+            "chars": 2145,
+            "bytes_utf8": 2168
+          },
+          "contents": {
+            "chars": 3620,
+            "bytes_utf8": 3637
+          },
+          "tool_responses_breakdown": {
+            "chars": 2496,
+            "bytes_utf8": 2508
+          },
+          "total_request": {
+            "chars": 8255,
+            "bytes_utf8": 8334
+          }
+        }
+      ]
+    }
+  ]
+}
