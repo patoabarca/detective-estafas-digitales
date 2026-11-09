@@ -58,6 +58,15 @@ EVALUADOR_ALLOWED_SKILLS: List[str] = [
     "generar-pdf",
 ]
 
+EVALUADOR_ALLOWED_TOOLS: List[str] = [
+    "tool_reunir_hallazgos",
+    "tool_calcular_puntaje",
+    "tool_asignar_nivel_riesgo",
+    "tool_explicar_resultado",
+    "tool_recomendar_cuidados",
+    "tool_generar_pdf",
+]
+
 EVALUADOR_BASE_INSTRUCTIONS = """Sos el Agente Evaluador del sistema de ciberseguridad 'Detective de Estafas Digitales'.
 Tu función es consolidar los hallazgos de los agentes analistas y producir la evaluación final de riesgo
 utilizando EXCLUSIVAMENTE las herramientas Python autorizadas.

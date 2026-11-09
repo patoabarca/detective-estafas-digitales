@@ -30,10 +30,14 @@ from PIL import Image
 
 from agents.analizador_enlaces.agent import (
     ANALIZADOR_ENLACES_ALLOWED_SKILLS,
+    ANALIZADOR_ENLACES_ALLOWED_TOOLS,
+    ANALIZADOR_ENLACES_TOOL_DECLARATIONS,
     AnalizadorEnlacesAgent,
 )
 from agents.evaluador.agent import (
     EVALUADOR_ALLOWED_SKILLS,
+    EVALUADOR_ALLOWED_TOOLS,
+    EVALUADOR_TOOL_DECLARATIONS,
     EvaluadorAgent,
 )
 from agents.tools.evaluation_tools import (
@@ -48,6 +52,8 @@ from agents.tools.evaluation_tools import (
 )
 from agents.analizador_mensajes.agent import (
     ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+    ANALIZADOR_MENSAJES_ALLOWED_TOOLS,
+    ANALIZADOR_MENSAJES_TOOL_DECLARATIONS,
     AnalizadorMensajesAgent,
 )
 from agents.common.contracts import (
@@ -76,8 +82,17 @@ from agents.common.privacy import (
 )
 from agents.common.skill_loader import SkillLoadError, load_skill, load_skills_for_agent
 from agents.common.traceability import AgentTracer
-from agents.orquestador.agent import OrquestadorAgent
-from agents.preparador.agent import PREPARADOR_ALLOWED_SKILLS, PreparadorAgent
+from agents.orquestador.agent import (
+    ORQUESTADOR_ALLOWED_TOOLS,
+    ORQUESTADOR_TOOL_DECLARATIONS,
+    OrquestadorAgent,
+)
+from agents.preparador.agent import (
+    PREPARADOR_ALLOWED_SKILLS,
+    PREPARADOR_ALLOWED_TOOLS,
+    PREPARADOR_TOOL_DECLARATIONS,
+    PreparadorAgent,
+)
 from agents.tools.message_analysis_tools import (
     MessageAnalysisSessionState,
     verify_snippets_in_text,
@@ -2325,3 +2340,164 @@ def test_real_gemini_api_orchestration_when_configured():
             f"TRACE: agent={ev['agent']} | event={ev['event_type']} | tool={ev['tool']} "
             f"| status={ev['status']} | ms={ev['duration_ms']} | detail={ev['detail']}"
         )
+
+
+# =============================================================================
+# Coherencia y Autorización Estricta de Herramientas (D3)
+# =============================================================================
+
+class TestAgentToolsAuthorizationAndCoherence:
+    """
+    Verifica de forma automatizada y parametrizada para los 5 agentes del sistema:
+    1. Que las herramientas declaradas al modelo (`tool_declarations`) coincidan exactamente
+       con las registradas para ejecución (`allowed_tools_map` en el bucle del agente).
+    2. Que ambas coincidan con la lista autorizada del agente (`<AGENT>_ALLOWED_TOOLS`).
+    3. Que no existan herramientas declaradas sin implementación (declared <= registered).
+    4. Que no existan herramientas ejecutables fuera de la autorización (registered <= authorized).
+    5. Que cada herramienta registrada sea una función invocable (callable).
+    6. Que exista coherencia estricta entre los nombres de skills (kebab-case) y las
+       herramientas asociadas (snake_case con prefijo tool_ o delegar_).
+    """
+
+    @pytest.mark.parametrize(
+        "agent_name,agent_class,allowed_tools_list,tool_declarations",
+        [
+            ("preparador", PreparadorAgent, PREPARADOR_ALLOWED_TOOLS, PREPARADOR_TOOL_DECLARATIONS),
+            ("analizador_mensajes", AnalizadorMensajesAgent, ANALIZADOR_MENSAJES_ALLOWED_TOOLS, ANALIZADOR_MENSAJES_TOOL_DECLARATIONS),
+            ("analizador_enlaces", AnalizadorEnlacesAgent, ANALIZADOR_ENLACES_ALLOWED_TOOLS, ANALIZADOR_ENLACES_TOOL_DECLARATIONS),
+            ("evaluador", EvaluadorAgent, EVALUADOR_ALLOWED_TOOLS, EVALUADOR_TOOL_DECLARATIONS),
+            ("orquestador", OrquestadorAgent, ORQUESTADOR_ALLOWED_TOOLS, ORQUESTADOR_TOOL_DECLARATIONS),
+        ],
+    )
+    def test_five_agents_tool_declarations_match_registered_and_authorized(
+        self, agent_name, agent_class, allowed_tools_list, tool_declarations, monkeypatch
+    ):
+        """
+        Intercepta la invocación a `run_agent_tool_loop` durante el `run()` de cada agente
+        utilizando las definiciones reales del código para garantizar coherencia sin listas duplicadas.
+        """
+        captured: Dict[str, Any] = {}
+
+        def mock_tool_loop(**kwargs):
+            captured["allowed_tools"] = kwargs.get("allowed_tools", {})
+            captured["tool_declarations"] = kwargs.get("tool_declarations", [])
+            return {"response_text": "ok", "tools_called_count": 0, "tools_called_names": []}
+
+        target_module = f"agents.{agent_name if agent_name != 'orquestador' else 'orquestador'}.agent.run_agent_tool_loop"
+        monkeypatch.setattr(target_module, mock_tool_loop)
+
+        tracer = AgentTracer()
+        agent = agent_class()
+
+        # Invocar run() con contexto mínimo válido para cada agente
+        if agent_name == "preparador":
+            ctx = PreparationSessionContext(input_mode="text", raw_input_text="Prueba de coherencia")
+            agent.run(ctx, tracer=tracer)
+        elif agent_name == "analizador_mensajes":
+            ctx = PreparationSessionContext(
+                input_mode="text", raw_input_text="Prueba de coherencia", validation_done=True, is_input_valid=True
+            )
+            agent.run(ctx, tracer=tracer)
+        elif agent_name == "analizador_enlaces":
+            raw_u = "https://ejemplo.com"
+            ctx = PreparationSessionContext(
+                input_mode="text",
+                raw_input_text=raw_u,
+                validation_done=True,
+                is_input_valid=True,
+                links_extracted=True,
+                extracted_urls=[raw_u],
+                url_id_map={"URL-1": raw_u},
+                masked_url_id_map={"URL-1": raw_u},
+            )
+            agent.run(ctx, tracer=tracer)
+        elif agent_name == "evaluador":
+            ctx = PreparationSessionContext(
+                input_mode="text", raw_input_text="Prueba de coherencia", validation_done=True, is_input_valid=True
+            )
+            prep_res = PreparationResult(estado="correcto", detalle_estado="texto_validado")
+            msg_res = MessageAnalysisResult(estado="correcto")
+            agent.run(session_ctx=ctx, prep_res=prep_res, msg_res=msg_res, url_res=None, tracer=tracer)
+        elif agent_name == "orquestador":
+            req = AgentInputRequest(input_mode="text", text_content="Prueba de coherencia")
+            agent.run(req)
+
+        # Extracción de conjuntos reales
+        registered_tools = captured.get("allowed_tools", {})
+        registered_names = set(registered_tools.keys())
+        declared_names = {d["name"] for d in captured.get("tool_declarations", [])}
+        authorized_names = set(allowed_tools_list)
+        declared_from_const = {d["name"] for d in tool_declarations}
+
+        # 1. Coincidencia exacta entre autorizadas, declaradas al modelo y registradas para ejecución
+        assert registered_names == authorized_names, (
+            f"[{agent_name}] Discrepancia entre herramientas registradas y autorizadas: "
+            f"registradas={registered_names}, autorizadas={authorized_names}"
+        )
+        assert declared_names == authorized_names, (
+            f"[{agent_name}] Discrepancia entre herramientas declaradas y autorizadas: "
+            f"declaradas={declared_names}, autorizadas={authorized_names}"
+        )
+        assert registered_names == declared_names, (
+            f"[{agent_name}] Discrepancia entre herramientas registradas y declaradas: "
+            f"registradas={registered_names}, declaradas={declared_names}"
+        )
+        assert declared_from_const == declared_names, (
+            f"[{agent_name}] Las declaraciones pasadas difieren de la constante del módulo."
+        )
+
+        # 2. Control de no inclusión indebida ni herramientas huérfanas
+        # - Ninguna herramienta declarada sin implementación:
+        assert declared_names.issubset(registered_names)
+        # - Ninguna herramienta ejecutable fuera de autorización:
+        assert registered_names.issubset(authorized_names)
+
+        # 3. Verificación de que cada herramienta registrada sea efectivamente ejecutable (callable)
+        for t_name, t_func in registered_tools.items():
+            assert callable(t_func), f"[{agent_name}] La herramienta '{t_name}' registrada no es invocable."
+
+    def test_skills_vs_tools_naming_and_mapping_distinction(self):
+        """
+        Verifica que no se confundan nombres de skills con nombres de herramientas:
+        - Skills usan formato kebab-case (ej. 'analizar-url', 'detectar-urgencia').
+        - Herramientas usan formato snake_case con prefijo 'tool_' o 'delegar_'.
+        - En cada SKILL.md, 'tool_name' debe estar presente en ALLOWED_TOOLS del agente autorizado.
+        """
+        skills_root = Path(".agents/skills")
+        assert skills_root.is_dir()
+
+        agent_tool_registry = {
+            "preparador": set(PREPARADOR_ALLOWED_TOOLS),
+            "analizador_mensajes": set(ANALIZADOR_MENSAJES_ALLOWED_TOOLS),
+            "analizador_enlaces": set(ANALIZADOR_ENLACES_ALLOWED_TOOLS),
+            "evaluador": set(EVALUADOR_ALLOWED_TOOLS),
+            "orquestador": set(ORQUESTADOR_ALLOWED_TOOLS),
+        }
+
+        specialist_skill_dirs = [
+            d for d in skills_root.iterdir()
+            if d.is_dir() and d.name != "detective-estafas-digitales"
+        ]
+        assert len(specialist_skill_dirs) == 15, f"Se esperaban 15 skills especialistas, halladas: {len(specialist_skill_dirs)}"
+
+        for skill_dir in specialist_skill_dirs:
+            skill_name = skill_dir.name
+            # La skill debe usar guiones medios (kebab-case)
+            assert "-" in skill_name, f"El nombre de la skill '{skill_name}' no sigue la convención kebab-case."
+            assert "_" not in skill_name, f"La skill '{skill_name}' contiene guiones bajos (confusión con herramienta)."
+
+            skill_def = load_skill(skill_name)
+            tool_name = skill_def.tool_name
+
+            # La herramienta debe usar guión bajo (snake_case)
+            assert "_" in tool_name, f"La herramienta '{tool_name}' de la skill '{skill_name}' no usa snake_case."
+            assert "-" not in tool_name, f"La herramienta '{tool_name}' contiene guiones medios (confusión con skill)."
+            assert tool_name.startswith("tool_") or tool_name.startswith("delegar_")
+
+            # Cada agente autorizado para la skill debe tener registrada la herramienta en sus ALLOWED_TOOLS
+            for allowed_agent in skill_def.allowed_agents:
+                assert allowed_agent in agent_tool_registry, f"Agente '{allowed_agent}' en skill '{skill_name}' no reconocido."
+                assert tool_name in agent_tool_registry[allowed_agent], (
+                    f"La herramienta '{tool_name}' de la skill '{skill_name}' no está autorizada en '{allowed_agent}'."
+                )
+
