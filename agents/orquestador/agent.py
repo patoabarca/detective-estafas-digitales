@@ -18,10 +18,10 @@ Responsabilidad delimitada (Etapas 1, 2 y 3):
      `analizar-url` y devuelve un `UrlAnalysisResult` validado. Si no existen enlaces en el mensaje,
      el orquestador omite llamar al agente de enlaces, registra el motivo (`sin_enlaces`) y no lo
      trata como un error.
-  4. `ejecutar_motor_deterministico`: una vez que la preparación, el análisis del mensaje y
+  4. `delegar_evaluacion`: una vez que la preparación, el análisis del mensaje y
      (cuando existen enlaces) el análisis de enlaces finalizaron con `estado == "correcto"`,
-     invoca la evaluación determinística existente integrando los hallazgos reales de ambos
-     analistas sin reejecutar sus detecciones ni duplicar puntuaciones.
+     invoca al Agente Evaluador real (`EvaluadorAgent`), quien consolida los hallazgos de ambos
+     analistas, calcula puntajes, asigna el nivel de riesgo y genera explicaciones y recomendaciones.
 - Hace cumplir en código las condiciones necesarias antes de ejecutar cada paso.
 - Si la preparación, el análisis del mensaje o el análisis de enlaces resulta `"incompleto"`:
   * NO ejecuta la puntuación como si estuviera completa ni devuelve Riesgo BAJO.
@@ -61,10 +61,7 @@ from agents.common.privacy import (
 )
 from agents.common.traceability import AgentTracer
 from agents.preparador.agent import PreparadorAgent
-from agents.tools.preparation_tools import (
-    PreparationSessionContext,
-    execute_tool_motor_deterministico,
-)
+from agents.tools.preparation_tools import PreparationSessionContext
 
 ORQUESTADOR_AGENT_NAME = "orquestador"
 
@@ -761,12 +758,11 @@ class OrquestadorAgent:
         user_prompt = (
             f"Nueva solicitud de evaluación recibida desde la interfaz.\n"
             f"- Modalidad (`input_mode`): '{request.input_mode}'\n"
-            f"Seguí el recorrido:\n"
+            f"Seguí el recorrido secuencial obligatorio:\n"
             f"1) `delegar_preparacion`\n"
-            f"2) si preparación=='correcto', `delegar_analisis_mensaje` (y si `links_count > 0`, podés invocar también `delegar_analisis_enlaces` en paralelo)\n"
-
-
-            f"3) si los análisis requeridos devolvieron 'correcto', `delegar_evaluacion`."
+            f"2) Si preparación=='correcto': `delegar_analisis_mensaje`\n"
+            f"3) Si análisis de mensaje=='correcto' y hay enlaces (`links_count > 0`): `delegar_analisis_enlaces` (si `links_count == 0`, omitilo)\n"
+            f"4) Si los análisis requeridos devolvieron 'correcto': `delegar_evaluacion`."
         )
 
         try:
