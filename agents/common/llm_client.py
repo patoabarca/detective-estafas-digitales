@@ -283,9 +283,6 @@ def run_agent_tool_loop(
 
     final_text = ""
     llm_calls_count = 0
-    prompt_tokens_total = 0
-    candidates_tokens_total = 0
-    total_tokens_accumulated = 0
 
     while True:
         elapsed = time.monotonic() - start_wall
@@ -306,6 +303,7 @@ def run_agent_tool_loop(
         try:
             response = None
             last_transient_exc: Optional[Exception] = None
+            successful_attempt = 0
             for attempt in range(2):
                 curr_elapsed = time.monotonic() - start_wall
                 if curr_elapsed >= max_elapsed_seconds:
@@ -317,6 +315,12 @@ def run_agent_tool_loop(
                         detail=f"Tiempo máximo excedido antes de llamada/reintento #{attempt + 1} ({curr_elapsed:.2f}s >= {max_elapsed_seconds}s).",
                         duration_ms=curr_elapsed * 1000,
                     )
+                    tracer.record_llm_call_failure(
+                        agent=agent_name,
+                        model=resolved_model,
+                        error_type="TimeoutBeforeCall",
+                        is_retry=(attempt > 0),
+                    )
                     raise AgentExecutionError(
                         f"El agente '{agent_name}' superó el tiempo máximo permitido de {max_elapsed_seconds}s (sin tiempo para llamada/reintento)."
                     )
@@ -327,6 +331,7 @@ def run_agent_tool_loop(
                         contents=contents,
                         config=config,
                     )
+                    successful_attempt = attempt
                     break
                 except Exception as call_exc:
                     err_info = parse_api_rate_limit_and_error(call_exc)
@@ -334,6 +339,12 @@ def run_agent_tool_loop(
 
                     # 1. Cuota permanente agotada
                     if err_info["is_permanent_quota"]:
+                        tracer.record_llm_call_failure(
+                            agent=agent_name,
+                            model=resolved_model,
+                            error_type="PermanentQuotaExceeded",
+                            is_retry=(attempt > 0),
+                        )
                         tracer.record(
                             agent=agent_name,
                             event_type="agent_error",
@@ -368,6 +379,12 @@ def run_agent_tool_loop(
                                 time.sleep(wait_seconds)
                                 continue
                             else:
+                                tracer.record_llm_call_failure(
+                                    agent=agent_name,
+                                    model=resolved_model,
+                                    error_type="RateLimitRetryBudgetExceeded",
+                                    is_retry=False,
+                                )
                                 tracer.record(
                                     agent=agent_name,
                                     event_type="agent_error",
@@ -386,6 +403,12 @@ def run_agent_tool_loop(
                                     "Por favor aguardá unos segundos antes de intentar nuevamente o utilizá el Modo Local Determinístico."
                                 ) from call_exc
                         else:
+                            tracer.record_llm_call_failure(
+                                agent=agent_name,
+                                model=resolved_model,
+                                error_type="RateLimitPersistentAfterRetry",
+                                is_retry=True,
+                            )
                             raise AgentExecutionError(
                                 "Límite temporal de consultas a la API de IA persistió tras reintento con espera. "
                                 "Por favor aguardá unos segundos antes de realizar una nueva consulta o utilizá el Modo Local Determinístico."
@@ -405,6 +428,12 @@ def run_agent_tool_loop(
                             time.sleep(1.5)
                             continue
                         else:
+                            tracer.record_llm_call_failure(
+                                agent=agent_name,
+                                model=resolved_model,
+                                error_type="NetworkErrorRetryBudgetExceeded",
+                                is_retry=False,
+                            )
                             tracer.record(
                                 agent=agent_name,
                                 event_type="agent_error",
@@ -417,6 +446,12 @@ def run_agent_tool_loop(
                                 f"Tiempo insuficiente ({rem_for_retry:.1f}s) para reintentar llamada tras fallo transitorio en '{agent_name}'."
                             ) from call_exc
 
+                    tracer.record_llm_call_failure(
+                        agent=agent_name,
+                        model=resolved_model,
+                        error_type=call_exc.__class__.__name__,
+                        is_retry=(attempt > 0),
+                    )
                     raise
 
             if response is None and last_transient_exc:
@@ -426,19 +461,51 @@ def run_agent_tool_loop(
             llm_calls_count += 1
 
             usage = getattr(response, "usage_metadata", None)
-            p_tok = int(getattr(usage, "prompt_token_count", 0) or 0) if usage is not None else 0
-            c_tok = int(getattr(usage, "candidates_token_count", 0) or 0) if usage is not None else 0
-            t_tok = int(getattr(usage, "total_token_count", 0) or (p_tok + c_tok)) if usage is not None else 0
-            prompt_tokens_total += p_tok
-            candidates_tokens_total += c_tok
-            total_tokens_accumulated += t_tok
+            p_tok: Optional[int] = None
+            c_tok: Optional[int] = None
+            t_tok: Optional[int] = None
+            cached_tok: Optional[int] = None
+            thoughts_tok: Optional[int] = None
+            tool_use_tok: Optional[int] = None
+
+            if usage is not None:
+                raw_p = getattr(usage, "prompt_token_count", None)
+                raw_c = getattr(usage, "candidates_token_count", None)
+                raw_t = getattr(usage, "total_token_count", None)
+                raw_cache = getattr(usage, "cached_content_token_count", None)
+                raw_th = getattr(usage, "thoughts_token_count", None)
+                raw_tu = getattr(usage, "tool_use_prompt_token_count", None)
+
+                p_tok = int(raw_p) if raw_p is not None else None
+                c_tok = int(raw_c) if raw_c is not None else None
+                t_tok = int(raw_t) if raw_t is not None else None
+                cached_tok = int(raw_cache) if raw_cache is not None else None
+                thoughts_tok = int(raw_th) if raw_th is not None else None
+                tool_use_tok = int(raw_tu) if raw_tu is not None else None
 
             tracer.record_llm_usage(
                 agent=agent_name,
                 prompt_tokens=p_tok,
                 output_tokens=c_tok,
                 total_tokens=t_tok,
+                cached_tokens=cached_tok,
+                thoughts_tokens=thoughts_tok,
+                tool_use_prompt_tokens=tool_use_tok,
+                is_retry=(successful_attempt > 0),
+                success=True,
+                model=resolved_model,
             )
+
+            p_disp = str(p_tok) if p_tok is not None else "no disponible"
+            c_disp = str(c_tok) if c_tok is not None else "no disponible"
+            t_disp = str(t_tok) if t_tok is not None else "no disponible"
+            extra_disp = []
+            if cached_tok is not None:
+                extra_disp.append(f"cached_tokens={cached_tok}")
+            if thoughts_tok is not None:
+                extra_disp.append(f"thoughts_tokens={thoughts_tok}")
+            extra_str = f", {', '.join(extra_disp)}" if extra_disp else ""
+
             tracer.record(
                 agent=agent_name,
                 event_type="llm_call",
@@ -446,7 +513,7 @@ def run_agent_tool_loop(
                 status="ok",
                 detail=(
                     f"Llamada #{llm_calls_count} a {resolved_model} "
-                    f"(prompt_tokens={p_tok}, output_tokens={c_tok}, total_tokens={t_tok})."
+                    f"(prompt_tokens={p_disp}, output_tokens={c_disp}, total_tokens={t_disp}{extra_str})."
                 ),
                 duration_ms=llm_ms,
             )
@@ -581,12 +648,13 @@ def run_agent_tool_loop(
         else:
             contents.append({"role": "user", "parts": response_parts})
 
+    agent_usage = tracer.get_usage_summary().get("by_agent", {}).get(agent_name, {})
     return {
         "final_text": final_text,
         "tool_calls_count": tool_calls_count,
         "llm_calls_count": llm_calls_count,
-        "prompt_tokens": prompt_tokens_total,
-        "output_tokens": candidates_tokens_total,
-        "total_tokens": total_tokens_accumulated,
+        "prompt_tokens": agent_usage.get("prompt_tokens"),
+        "output_tokens": agent_usage.get("output_tokens"),
+        "total_tokens": agent_usage.get("total_tokens"),
         "model_used": resolved_model,
     }
