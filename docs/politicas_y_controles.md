@@ -27,26 +27,32 @@ Este documento describe la trazabilidad técnica de las políticas definidas en 
 
 ## 2. Distinción entre Niveles de Coherencia y Control
 
-Para evitar interpretaciones equívocas sobre el alcance de las políticas y su implementación:
+Para evitar interpretaciones equívocas sobre el alcance de las políticas y su implementación efectiva, se distinguen con precisión los siguientes planos:
 
 1. **Coherencia Comprobada entre Herramientas (100% Verificada):**
-   Existe coincidencia exacta y automatizada ([`tests/test_agents_tools_coherence.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/tests/test_agents_tools_coherence.py), control D3) entre:
+   Existe coincidencia exacta y automatizada ([`tests/test_agents_orchestration.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/tests/test_agents_orchestration.py#L2349), clase `TestAgentToolsAuthorizationAndCoherence`, control D3) entre:
    - Las declaraciones de herramientas expuestas al LLM en `prompts.py` (`TOOL_DECLARATIONS`).
    - Las implementaciones registradas en `TOOL_REGISTRY`.
    - Las herramientas explícitamente autorizadas en `run_agent_tool_loop` de los 5 agentes.
    Esta correspondencia está garantizada por pruebas unitarias parametrizadas continuas sin discrepancias.
 
-2. **Opciones Declarativas de `policy.json` (No Consultadas en Ejecución):**
-   Campos como `allow_network`, `allow_shell_execution`, `prohibit_dynamic_code_exec`, `treat_input_as_untrusted`, `ignore_embedded_instructions`, `mask_sensitive_information`, `block_path_traversal` y `save_user_messages` **no son leídos ni evaluados por el intérprete de Python**. Actúan como documentación formal y especificación de diseño para auditorías externas, no como interruptores dinámicos del sistema.
+2. **Parámetros y Reglas Gobernados Efectivamente por `policy.json` (Leídos en Tiempo de Ejecución):**
+   A diferencia de los flags puramente conceptuales, los siguientes controles sí leen activamente la configuración de [`config/policy.json`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/config/policy.json):
+   - **`max_input_chars`:** Leído dinámicamente y aplicado en [`scripts/worker.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/scripts/worker.py) y [`web/analysis_adapter.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/web/analysis_adapter.py).
+   - **`max_file_size_kb`**, **`allowed_extensions`** y **`allowed_directories`:** Leídos y validados en el punto de entrada de archivos locales en [`scripts/worker.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/scripts/worker.py) (`validate_file_path`).
+   - **`weights.*`** (ponderaciones de severidad) y **`thresholds.*`** (umbrales de clasificación): Leídos dinámicamente tanto en el motor determinístico ([`scripts/risk_classifier.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/scripts/risk_classifier.py)) como en las herramientas del agente Evaluador ([`agents/tools/evaluation_tools.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/agents/tools/evaluation_tools.py)).
 
-3. **Controles de Seguridad Efectivos en Código:**
-   Los controles de mitigación están implementados directamente en la lógica estática de Python de manera incondicional:
-   - Enmascaramiento y sanitización de parámetros sensibles y credenciales en [`agents/common/privacy.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/agents/common/privacy.py).
-   - Validación estricta de esquemas y tipos mediante contratos [`agents/common/contracts.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/agents/common/contracts.py) (`ContractValidationError`).
-   - Límites determinísticos de longitud en [`agents/tools/preparation_tools.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/agents/tools/preparation_tools.py).
-   - Omisión de contenido textual del usuario en [`agents/common/traceability.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/agents/common/traceability.py) (`AgentTracer`).
-   - Bloqueo de recorridos de ruta en [`agents/common/skill_loader.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/agents/common/skill_loader.py).
-   Estos controles operan con independencia del estado o presencia de los flags de `policy.json`.
+3. **Salvaguardas Fijas en Código (Independientes de Flags en `policy.json`):**
+   Determinadas protecciones críticas operan de forma incondicional en el código Python, sin consultar los valores o la presencia de sus flags homónimos en el JSON:
+   - Enmascaramiento y sanitización estricta de parámetros sensibles y credenciales en [`agents/common/privacy.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/agents/common/privacy.py) (no evalúa el booleano `mask_sensitive_information`).
+   - Validación estricta de contratos y tipos en [`agents/common/contracts.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/agents/common/contracts.py) (`ContractValidationError`, no evalúa `treat_input_as_untrusted`).
+   - Omisión del texto literal de los mensajes analizados en las trazas técnicas de [`agents/common/traceability.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/agents/common/traceability.py) (`AgentTracer`, no evalúa `save_user_messages`).
+   - Bloqueo de secuencias de escape de ruta en [`agents/common/skill_loader.py`](file:///c:/Users/Asus/Documents/Diplomatura%20IA/detective-estafas-digitales/agents/common/skill_loader.py) (no evalúa `block_path_traversal`).
+   - Ausencia total de invocaciones dinámicas como `eval()` o `exec()` (no evalúa `prohibit_dynamic_code_exec`).
+
+4. **Directivas Puramente Declarativas (Sin Bloqueo a Nivel de Proceso en Python):**
+   - **`allow_network: false`:** No bloquea sockets a nivel de sistema operativo. Mientras el análisis de URLs local es estático y no usa red, la orquesta de agentes sí realiza conexiones hacia la API externa de Google Gemini. El aislamiento estricto de red requiere control externo de contenedor (Docker con `--network none`).
+   - **`allow_shell_execution: false`:** La aplicación no utiliza llamadas a shell, pero el archivo JSON no provee un mecanismo de sandbox en ejecución. La restricción real en producción proviene de ejecutar el contenedor con usuario no privilegiado (`10001:10001`).
 
 ---
 
