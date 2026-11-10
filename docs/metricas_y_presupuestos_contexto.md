@@ -31,15 +31,13 @@ En la versión previa del sistema se detectaron inconsistencias en la captura y 
 
 ### 1.2. Análisis del Caso Histórico Previo (`prompt=0, output=0, total=3022`)
 
-En una ejecución previa de pruebas reales con Gemini, el trazador registró un reporte desconcertante:
+En una ejecución previa de pruebas reales con Gemini, el trazador registró un reporte con:
 `prompt=0, output=0, total=3022`.
 
-#### Causa en el código local
-El objeto `usage_metadata` provisto por el SDK contenía `total_token_count = 3022`, pero los atributos `prompt_token_count` y `candidates_token_count` vinieron nulos (`None`) o no fueron poblados en la respuesta del modelo. La función local forzó esos campos ausentes a `0`, creando la falsa impresión de que se consumieron cero tokens de entrada y salida pero 3.022 en total.
-
-#### Causa original en el proveedor (Gemini API)
-La causa exacta por la cual la API de Gemini omitió los componentes de entrada y salida en esa solicitud específica queda **técnicamente indeterminada**.  
-Al no haberse conservado en dicha sesión histórica los registros crudos de tráfico de red a nivel de socket (raw HTTP wire logs) ni las cabeceras de respuesta del endpoint de Gemini, no es posible discernir si se debió a un comportamiento de streaming parcial, a una respuesta generada en una versión preliminar de la API, o a una asimetría transitoria en la agregación interna de métricas del clúster de Google.
+#### Comportamiento comprobado en el código
+- **Conversión de datos ausentes a cero**: Está confirmado en el código anterior que cualquier campo ausente o con valor `None` era forzado a `0` mediante la expresión `getattr(usage, "...", 0) or 0`.
+- **Reproducción con respuestas simuladas**: Este comportamiento fue reproducido exitosamente en pruebas unitarias automatizadas (`tests/test_token_metrics.py`), demostrando cómo una respuesta que contiene únicamente `total_token_count = 3022` y omite `prompt_token_count` y `candidates_token_count` generaba exactamente el reporte observado.
+- **Estado de la causa histórica**: No está confirmado que esa haya sido la causa exacta de los ceros en aquella ejecución histórica puntual, dado que no se conservó la respuesta original del SDK ni el registro suficiente de dicha llamada. La causa histórica de esa emisión permanece no verificada.
 
 ---
 
@@ -111,9 +109,12 @@ La línea base fue ejecutada de manera 100% determinística y offline con los tr
 2. **ESC-02 (Texto con dos enlaces ficticios)**: "Promoción imperdible en https://promo-banco.xyz/login y verifique en http://192.168.1.50/promo"
 3. **ESC-03 (Captura con OCR simulado y enlace)**: Simulación de captura con OCR legible que extrae texto fraudulento y el enlace `https://banco-seguro-actualizacion.com/login`.
 
-#### Tabla General de Consumo de Contexto Acumulado
+#### Tabla General: Línea base de recorridos simulados
 
-| Escenario | Modo de Entrada | Agentes Intervinientes | Turnos Totales | Contexto Acumulado (Caracteres) | Contexto Acumulado (Bytes UTF-8) |
+> **Nota metodológica sobre los recorridos simulados**:  
+> La cantidad de turnos, el flujo de llamadas y los porcentajes de contexto por agente dependen de las respuestas programadas del cliente simulado (`mock_client`) y **no representan consumo real medido de la API de Gemini**. No obstante, las magnitudes de tamaño en caracteres y bytes UTF-8 son consistentes y reproducibles, resultando plenamente útiles como referencia comparativa para auditar cambios futuros bajo exactamente los mismos escenarios.
+
+| Escenario | Modo de Entrada | Agentes Intervinientes | Turnos Simulados | Contexto Acumulado (Caracteres) | Contexto Acumulado (Bytes UTF-8) |
 |---|---|:---:|:---:|:---:|:---:|
 | **ESC-01** | Texto directo | 4 agentes | 14 | **219.594** | **222.168** |
 | **ESC-02** | Texto directo | 5 agentes | 17 | **242.764** | **245.574** |
@@ -172,7 +173,10 @@ La línea base fue ejecutada de manera 100% determinística y offline con los tr
 
 En pruebas unitarias previas se comprobaban igualdades exactas (`assert pilot_chars == 2273`). Este enfoque resultaba excesivamente frágil: cualquier ajuste menor de puntuación, redacción de docstrings o saltos de línea quebraba los tests a pesar de que el código cumplía holgadamente su objetivo de reducción.
 
-Se reemplazaron dichas aserciones rígidas por **presupuestos máximos razonables** que ofrecen un **margen de tolerancia de +20% a +35%** sobre la medición real documentada, manteniendo la exigencia de que la reducción porcentual supere el 40% frente al commit base:
+Se reemplazaron dichas aserciones rígidas por **presupuestos máximos razonables** que ofrecen un **margen de tolerancia de +20% a +35%** sobre la medición real documentada, manteniendo la exigencia de que la reducción porcentual supere el 40% frente al commit base.
+
+> **Alcance de los presupuestos de contexto**:  
+> Los presupuestos establecidos son límites cuantitativos comprobados por tests para componentes y casos definidos (instrucción de sistema, declaraciones de herramientas y respuestas ante casos sintéticos fijos). No constituyen límites de ejecución en tiempo de ejecución (runtime throttling) ni representan garantías generales de seguridad ante entradas arbitrarias.
 
 ### 3.2. Tabla de Presupuestos y Márgenes
 
@@ -203,3 +207,4 @@ Para cuando se decida ejecutar validaciones con la API en vivo de Gemini, se deb
    Se debe registrar si el proveedor omite o reporta campos en tiempo real (`complete`, `partial`, `unavailable`), auditando si `prompt_token_count`, `candidates_token_count` o `total_token_count` vienen nulos.
 4. **Aislamiento en Suites Automatizadas**:  
    Todas las pruebas continuas de regresión en CI/Docker deben seguir ejecutándose con `DETECTIVE_SKIP_DOTENV=1` y credenciales vacías, garantizando que ninguna prueba automatizada dependa de la red ni consuma cuota externa.
+
