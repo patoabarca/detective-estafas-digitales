@@ -100,17 +100,85 @@ Se distingue entre:
 ## 5. Comparativa Reproducible Antes / Después (Línea Base Simulada)
 
 > **Nota metodológica obligatoria**:  
-> Las mediciones a continuación corresponden a **recorridos simulados** bajo exactamente los mismos escenarios ficticios y respuestas programadas que en la Tarea 3. **No representan mediciones reales de tokens cobrados, dinero facturado ni latencia de red de la API de Gemini**.
+> Las mediciones a continuación corresponden a **recorridos simulados** bajo exactamente los mismos escenarios ficticios, textos de entrada y respuestas programadas definidos en la línea base de la Tarea 3 (`scripts/reproduce_context_baseline.py` y `docs/context_baseline_metrics.json`). **No representan mediciones reales de tokens cobrados, dinero facturado ni latencia de red de la API de Gemini**.
 
-### 5.1. Comparativa de Solicitudes y Turnos por Escenario
+### 5.1. Comparativa de Solicitudes y Turnos por Escenario (Mismos Escenarios e Insumos)
 
 | Escenario | Métrica | Versión Tarea 3 (Base Commit 52c17d7) | Versión Tarea 4 (Optimizada) | Diferencia Absoluta | Variación Relativa |
 |---|---|:---:|:---:|:---:|:---:|
-| **ESC-01**<br>*(Texto sin URLs)* | Turnos Totales<br>Turnos Enlaces<br>Chars Acumulados<br>Bytes UTF-8 | 14<br>0 *(omitido)*<br>219.594<br>222.168 | 14<br>0 *(omitido)*<br>220.403<br>223.000 | 0<br>0<br>+809<br>+832 | 0,0%<br>0,0%<br>+0,37%<br>+0,37% |
-| **ESC-02**<br>*(Texto 2 URLs)* | Turnos Totales<br>**Turnos Enlaces**<br>Chars Enlaces<br>Chars Acumulados<br>Bytes UTF-8 | 17<br>**2**<br>8.326<br>242.764<br>245.574 | 16<br>**1**<br>3.165<br>232.582<br>235.299 | -1<br>**-1**<br>**-5.161**<br>-10.182<br>-10.275 | -5,9%<br>**-50,0%**<br>**-62,0%**<br>-4,19%<br>-4,18% |
-| **ESC-03**<br>*(Captura OCR + URL)* | Turnos Totales<br>**Turnos Enlaces**<br>Chars Enlaces<br>Chars Acumulados<br>Bytes UTF-8 | 18<br>**2**<br>7.837<br>251.404<br>254.341 | 17<br>**1**<br>3.124<br>243.283<br>246.117 | -1<br>**-1**<br>**-4.713**<br>-8.121<br>-8.224 | -5,6%<br>**-50,0%**<br>**-60,1%**<br>-3,23%<br>-3,23% |
+| **ESC-01**<br>*(Texto sin URLs)* | Turnos Totales<br>Turnos Enlaces<br>Chars Acumulados<br>Bytes UTF-8 | 14<br>0 *(omitido)*<br>219.594<br>222.168 | 14<br>0 *(omitido)*<br>219.594<br>222.168 | 0<br>0<br>**0**<br>**0** | 0,00%<br>0,00%<br>**0,00%**<br>**0,00%** |
+| **ESC-02**<br>*(Texto 2 URLs)* | Turnos Totales<br>**Turnos Enlaces**<br>Chars Enlaces<br>Bytes UTF-8 Enlaces<br>Chars Acumulados<br>Bytes UTF-8 | 17<br>**2**<br>8.326<br>8.432<br>242.764<br>245.574 | 16<br>**1**<br>3.189<br>3.235<br>237.627<br>240.377 | -1<br>**-1**<br>**-5.137**<br>**-5.197**<br>**-5.137**<br>**-5.197** | -5,88%<br>**-50,00%**<br>**-61,70%**<br>**-61,63%**<br>**-2,11%**<br>**-2,12%** |
+| **ESC-03**<br>*(Captura OCR + URL)* | Turnos Totales<br>**Turnos Enlaces**<br>Chars Enlaces<br>Bytes UTF-8 Enlaces<br>Chars Acumulados<br>Bytes UTF-8 | 18<br>**2**<br>7.837<br>7.937<br>251.404<br>254.341 | 17<br>**1**<br>3.122<br>3.166<br>246.689<br>249.570 | -1<br>**-1**<br>**-4.715**<br>**-4.771**<br>**-4.715**<br>**-4.771** | -5,56%<br>**-50,00%**<br>**-60,16%**<br>**-60,11%**<br>**-1,88%**<br>**-1,88%** |
 
-### 5.2. Tamaño de la Respuesta de Herramienta en Casos Fijos
+---
+
+### 5.2. Desglose Riguroso por Agente y Turno
+
+Al comparar la línea base histórica contra la versión optimizada usando estrictamente los mismos datos de entrada:
+
+#### A. Escenario 1 (ESC-01: Texto sin enlaces)
+El Analizador de Enlaces se omite completamente al no existir URLs.
+- **Orquestador** (4 turnos): Base = 24.399 chars (24.783 bytes) -> Opt = 24.399 chars (24.783 bytes) | **Diferencia = 0**.
+- **Preparador** (3 turnos): Base = 35.135 chars (35.531 bytes) -> Opt = 35.135 chars (35.531 bytes) | **Diferencia = 0**.
+- **Analizador Mensajes** (2 turnos): Base = 31.702 chars (32.062 bytes) -> Opt = 31.702 chars (32.062 bytes) | **Diferencia = 0**.
+- **Evaluador** (5 turnos): Base = 128.358 chars (129.792 bytes) -> Opt = 128.358 chars (129.792 bytes) | **Diferencia = 0**.
+- **Total ESC-01**: **Exact match idéntico en todos los turnos (Diferencia = 0 caracteres, 0 bytes)**.
+
+#### B. Escenario 2 (ESC-02: Texto con dos enlaces ficticios)
+- **Orquestador** (5 turnos): Base = 34.701 chars -> Opt = 34.701 chars | **Diferencia = 0**.
+- **Preparador** (3 turnos): Base = 35.389 chars -> Opt = 35.389 chars | **Diferencia = 0**.
+- **Analizador Mensajes** (2 turnos): Base = 32.240 chars -> Opt = 32.240 chars | **Diferencia = 0**.
+- **Evaluador** (5 turnos): Base = 132.108 chars -> Opt = 132.108 chars | **Diferencia = 0**.
+- **Analizador Enlaces** (2 turnos -> 1 turno):
+  - **Turno 1**: Base = 3.391 chars (3.445 bytes) -> Opt = 3.189 chars (3.235 bytes) | **Diferencia: -202 chars (-210 bytes)**.
+    - Causa: Retiro de la regla de instrucción redundante que ordenaba emitir un resumen textual final en `ANALIZADOR_ENLACES_BASE_INSTRUCTIONS`.
+  - **Turno 2**: Base = 4.935 chars (4.987 bytes) -> Opt = **ELIMINADO por finalización anticipada**.
+    - Causa: La condición `_is_url_analysis_work_complete` detecta que el lote de URLs fue procesado y corta el ciclo antes de enviar la llamada al modelo.
+  - **Subtotal Analizador Enlaces**: **-5.137 caracteres (-5.197 bytes UTF-8)**.
+- **Total ESC-02**: Reducción neta de **-5.137 caracteres (-5.197 bytes UTF-8)**, atribuible al **100% al Analizador de Enlaces**.
+
+#### C. Escenario 3 (ESC-03: Captura OCR con un enlace ficticio)
+- **Orquestador** (5 turnos): Base = 33.590 chars -> Opt = 33.590 chars | **Diferencia = 0**.
+- **Preparador** (4 turnos): Base = 47.731 chars -> Opt = 47.731 chars | **Diferencia = 0**.
+- **Analizador Mensajes** (2 turnos): Base = 31.880 chars -> Opt = 31.880 chars | **Diferencia = 0**.
+- **Evaluador** (5 turnos): Base = 130.366 chars -> Opt = 130.366 chars | **Diferencia = 0**.
+- **Analizador Enlaces** (2 turnos -> 1 turno):
+  - **Turno 1**: Base = 3.324 chars (3.376 bytes) -> Opt = 3.122 chars (3.166 bytes) | **Diferencia: -202 chars (-210 bytes)** (poda de instrucción del sistema).
+  - **Turno 2**: Base = 4.513 chars (4.561 bytes) -> Opt = **ELIMINADO por finalización anticipada**.
+  - **Subtotal Analizador Enlaces**: **-4.715 caracteres (-4.771 bytes UTF-8)**.
+- **Total ESC-03**: Reducción neta de **-4.715 caracteres (-4.771 bytes UTF-8)**, atribuible al **100% al Analizador de Enlaces**.
+
+---
+
+### 5.3. Conciliación y Explicación de Diferencias en Mediciones Exploratorias Previas
+
+En una prueba exploratoria preliminar (registrada en el historial de la tarea), se ejecutó un script con textos sintéticos diferentes a los definidos en `scripts/reproduce_context_baseline.py`:
+- En dicha prueba se utilizaron textos ad-hoc (por ejemplo, un mensaje con amenazas bancarias y pedidos urgentes de credenciales en ESC-01, y textos abreviados en ESC-02 y ESC-03).
+- **Explicación comprobada de los valores observados en esa prueba exploratoria**:
+  1. **ESC-01 (+809 chars)**: El texto ad-hoc incluía disparadores de amenaza y credenciales que activaron más reglas en el Evaluador (+1.014 chars acumulados en sus 5 turnos), mientras que el Preparador varió -188 chars por longitud de texto. Al re-ejecutar con el **mismo texto base** (notificación postal benigna), la diferencia es exactamente **0 caracteres**.
+  2. **ESC-02 (-10.182 chars vs. -5.161 en Enlaces)** y **ESC-03 (-8.121 chars vs. -4.713 en Enlaces)**: Los textos de entrada ad-hoc eran sustancialmente más breves que los de la línea base, lo que redujo artificialmente el contexto en todos los agentes intervinientes (Orquestador, Preparador, Analizador Mensajes y Evaluador).
+- **Conclusión metodológica**: Cualquier comparación entre versiones de optimización debe mantener congelados los insumos exactos. Cuando se respetan estrictamente los insumos de la línea base, no hay propagación espuria ni alteraciones colaterales fuera del Analizador de Enlaces.
+
+---
+
+### 5.4. Distinción Expresa de los Tres Planos de Medición
+
+Para evitar confusiones en la interpretación técnica de los resultados:
+
+1. **Contexto efectivamente incluido en las solicitudes al modelo (Simulación)**:
+   - Es el volumen canónico (`system_instruction` + `tool_declarations` + `contents`) enviado en cada invocación de `generate_content`.
+   - Se reduce en 1 turno completo (eliminación del Turno 2 en Analizador de Enlaces) y en 202 caracteres por turno en la instrucción del sistema.
+2. **Respuestas de herramientas construidas localmente vs. transmitidas**:
+   - `tool_analizar_url` construye en memoria un JSON estructurado (optimizado de 1.123 a 496 caracteres).
+   - Debido a la **finalización anticipada**, este JSON **nunca se retransmite al modelo** en un turno subsiguiente; se consume exclusivamente en memoria local para conformar el resultado tipado `UrlAnalysisResult`.
+   - Por ende, el costo de transmisión de esa respuesta hacia el modelo en el Turno 2 pasa a ser **cero**.
+3. **Mediciones de simulación vs. Consumo real de la API de Gemini**:
+   - Las mediciones reportadas corresponden a **caracteres y bytes UTF-8** de payloads determinísticos bajo clientes simulados.
+   - **No representan consumo real de tokens BPE**, costos facturados de red ni latencias del servicio externo de Google Gemini.
+
+---
+
+### 5.5. Tamaño de la Respuesta de Herramienta en Casos Fijos
 Medición escalar de la salida JSON de `tool_analizar_url` ante caso sintético de IP directa (`http://192.168.1.50/login`):
 
 | Métrica | Antes (Tarea 3) | Después (Tarea 4) | Reducción | % Reducción |
@@ -135,3 +203,4 @@ Durante la validación de la Tarea 3 se registró un fallo intermitente en:
 
 ### Corrección Determinística:
 Se aplicó un reloj simulado controlado con `monkeypatch.setattr(time, "monotonic", fake_monotonic)`, eliminando dependencias de microsegundos del planificador y garantizando un comportamiento 100% determinístico sin ampliar tiempos artificialmente.
+
