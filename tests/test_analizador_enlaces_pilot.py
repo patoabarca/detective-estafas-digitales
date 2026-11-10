@@ -26,8 +26,15 @@ from agents.analizador_enlaces.agent import (
     ANALIZADOR_ENLACES_AGENT_NAME,
     ANALIZADOR_ENLACES_ALLOWED_SKILLS,
     ANALIZADOR_ENLACES_BASE_INSTRUCTIONS,
+    ANALIZADOR_ENLACES_TOOL_DECLARATIONS,
+    execute_tool_analizar_url,
+    UrlAnalysisSessionState,
 )
 from agents.analizador_enlaces.prompts import build_untrusted_urls_prompt
+from agents.common.context_metrics import (
+    canonical_json_serialize,
+    measure_text_size,
+)
 from agents.common.contracts import AgentInputRequest
 from agents.common.privacy import (
     sanitize_url_component_for_external_llm,
@@ -129,20 +136,40 @@ class CapturingMockLLMClient:
 
 
 # =============================================================================
-# 1. Medición Real del Contexto Efectivo de build_system_instruction()
+# 1. Mediciones Históricas y Presupuestos Máximos de Contexto
 # =============================================================================
 
-# Medición real obtenida de `base_agent.build_system_instruction()` sobre el commit base:
-# Commit de origen: 454601ddb6259bcec2b77f5ee6478649dd9f183f
+# Mediciones reales históricas obtenidas de la versión base (commit 454601ddb6259bcec2b77f5ee6478649dd9f183f):
 BASELINE_BUILD_SYSTEM_INSTRUCTION_CHARS: int = 5951
 BASELINE_BUILD_SYSTEM_INSTRUCTION_BYTES: int = 6036
+
+# Mediciones reales documentadas tras la desduplicación de Tarea 2 (commit c1d7139):
+HISTORICAL_PILOT_SYSTEM_INSTRUCTION_CHARS_TASK2: int = 2273
+HISTORICAL_PILOT_SYSTEM_INSTRUCTION_BYTES_TASK2: int = 2304
+
+# Presupuestos máximos razonables (+20% a +35% de margen sobre las mediciones documentadas):
+# El margen permite adaptaciones y mejoras de formato o redacción sin quebrar las pruebas,
+# al tiempo que previene regresiones no deseadas de contexto (> 40% de reducción garantizada).
+MAX_PILOT_SYSTEM_INSTRUCTION_CHARS: int = 3000   # Margen ~32% sobre 2273
+MAX_PILOT_SYSTEM_INSTRUCTION_BYTES: int = 3100   # Margen ~34.5% sobre 2304
+
+# Mediciones y presupuestos para declaraciones de herramientas y respuestas fijas:
+HISTORICAL_PILOT_TOOL_DECLARATIONS_CHARS: int = 490
+HISTORICAL_PILOT_TOOL_DECLARATIONS_BYTES: int = 495
+MAX_PILOT_TOOL_DECLARATIONS_CHARS: int = 650      # Margen ~32% sobre 490
+MAX_PILOT_TOOL_DECLARATIONS_BYTES: int = 670      # Margen ~35% sobre 495
+
+HISTORICAL_PILOT_SINGLE_URL_TOOL_RESPONSE_CHARS: int = 1123
+HISTORICAL_PILOT_SINGLE_URL_TOOL_RESPONSE_BYTES: int = 1132
+MAX_PILOT_SINGLE_URL_TOOL_RESPONSE_CHARS: int = 1500  # Margen ~33% sobre 1123
+MAX_PILOT_SINGLE_URL_TOOL_RESPONSE_BYTES: int = 1550  # Margen ~37% sobre 1132
 
 
 def test_pilot_system_instruction_context_reduction():
     """
     Verifica que la salida efectiva de build_system_instruction() en el agente piloto
-    reduzca el contexto de instrucción más de un 40% en caracteres y bytes UTF-8
-    frente a la salida efectiva de build_system_instruction() del commit base 454601d.
+    se mantenga dentro del presupuesto máximo asignado y garantice una reducción de
+    contexto superior al 40% frente a la versión base 454601d.
     """
     pilot_agent = AnalizadorEnlacesAgent()
     pilot_instruction = pilot_agent.build_system_instruction()
@@ -156,15 +183,62 @@ def test_pilot_system_instruction_context_reduction():
     byte_reduction = BASELINE_BUILD_SYSTEM_INSTRUCTION_BYTES - pilot_bytes
     byte_pct_reduction = (byte_reduction / BASELINE_BUILD_SYSTEM_INSTRUCTION_BYTES) * 100.0
 
-    # Verificaciones cuantitativas exactas
-    # Actualizado en Tarea 2 (B2): desduplicación de instrucciones entre prompts.py y SKILL.md,
-    # y remoción de orden de consulta a archivo local de referencia.
-    assert pilot_chars == 2273, f"Caracteres efectivos inesperados: {pilot_chars}"
-    assert pilot_bytes == 2304, f"Bytes efectivos inesperados: {pilot_bytes}"
-    assert char_reduction == 3678, f"Diferencia de caracteres inesperada: {char_reduction}"
-    assert byte_reduction == 3732, f"Diferencia de bytes inesperada: {byte_reduction}"
-    assert char_pct_reduction >= 40.0, f"Reducción porcentual insuficiente: {char_pct_reduction:.2f}%"
-    assert byte_pct_reduction >= 40.0, f"Reducción porcentual insuficiente: {byte_pct_reduction:.2f}%"
+    # Verificación de presupuesto máximo razonable (+20-30% de margen)
+    assert pilot_chars <= MAX_PILOT_SYSTEM_INSTRUCTION_CHARS, (
+        f"Instrucción de sistema excede presupuesto de caracteres: {pilot_chars} > {MAX_PILOT_SYSTEM_INSTRUCTION_CHARS}"
+    )
+    assert pilot_bytes <= MAX_PILOT_SYSTEM_INSTRUCTION_BYTES, (
+        f"Instrucción de sistema excede presupuesto de bytes UTF-8: {pilot_bytes} > {MAX_PILOT_SYSTEM_INSTRUCTION_BYTES}"
+    )
+
+    # Verificación de que no esté vacía y que reduzca > 40% frente a la base histórica
+    assert pilot_chars > 0, "Instrucción de sistema vacía"
+    assert char_pct_reduction >= 40.0, f"Reducción porcentual de caracteres insuficiente: {char_pct_reduction:.2f}%"
+    assert byte_pct_reduction >= 40.0, f"Reducción porcentual de bytes insuficiente: {byte_pct_reduction:.2f}%"
+
+
+def test_pilot_tool_declarations_and_responses_budget():
+    """
+    Verifica que las declaraciones de herramientas y las respuestas de herramientas en
+    casos ficticios fijos se mantengan dentro de sus respectivos presupuestos máximos.
+    """
+    # 1. Declaraciones de herramientas del especialista
+    tools_canonical = canonical_json_serialize(ANALIZADOR_ENLACES_TOOL_DECLARATIONS)
+    tools_size = measure_text_size(tools_canonical)
+
+    assert tools_size["chars"] <= MAX_PILOT_TOOL_DECLARATIONS_CHARS, (
+        f"Declaraciones de herramientas exceden presupuesto de caracteres: "
+        f"{tools_size['chars']} > {MAX_PILOT_TOOL_DECLARATIONS_CHARS}"
+    )
+    assert tools_size["bytes_utf8"] <= MAX_PILOT_TOOL_DECLARATIONS_BYTES, (
+        f"Declaraciones de herramientas exceden presupuesto de bytes: "
+        f"{tools_size['bytes_utf8']} > {MAX_PILOT_TOOL_DECLARATIONS_BYTES}"
+    )
+
+    # 2. Respuesta de herramienta fija ante caso sintético de URL con IP
+    ctx = PreparationSessionContext(
+        input_mode="text",
+        raw_input_text="http://192.168.1.50/login",
+        validation_done=True,
+        is_input_valid=True,
+        links_extracted=True,
+        extracted_urls=["http://192.168.1.50/login"],
+        url_id_map={"URL-1": "http://192.168.1.50/login"},
+        masked_url_id_map={"URL-1": "http://192.168.1.50/login"},
+    )
+    url_state = UrlAnalysisSessionState()
+    tool_resp = execute_tool_analizar_url(ctx, url_state, {"url_ids": ["URL-1"]})
+    resp_canonical = canonical_json_serialize(tool_resp)
+    resp_size = measure_text_size(resp_canonical)
+
+    assert resp_size["chars"] <= MAX_PILOT_SINGLE_URL_TOOL_RESPONSE_CHARS, (
+        f"Respuesta de herramienta excede presupuesto de caracteres: "
+        f"{resp_size['chars']} > {MAX_PILOT_SINGLE_URL_TOOL_RESPONSE_CHARS}"
+    )
+    assert resp_size["bytes_utf8"] <= MAX_PILOT_SINGLE_URL_TOOL_RESPONSE_BYTES, (
+        f"Respuesta de herramienta excede presupuesto de bytes: "
+        f"{resp_size['bytes_utf8']} > {MAX_PILOT_SINGLE_URL_TOOL_RESPONSE_BYTES}"
+    )
 
 
 # =============================================================================
