@@ -230,6 +230,7 @@ def run_agent_tool_loop(
     model_name: Optional[str] = None,
     max_tool_calls: int = MAX_TOOL_CALLS_DEFAULT,
     max_elapsed_seconds: float = MAX_ELAPSED_SECONDS_DEFAULT,
+    should_terminate_early: Optional[Callable[[], bool]] = None,
 ) -> Dict[str, Any]:
     """
     Ejecuta el ciclo real de un agente con un modelo de IA y una lista cerrada de herramientas:
@@ -647,6 +648,19 @@ def run_agent_tool_loop(
             contents.append(genai_types.Content(role="user", parts=response_parts))
         else:
             contents.append({"role": "user", "parts": response_parts})
+
+        if should_terminate_early is not None and should_terminate_early():
+            tracer.record(
+                agent=agent_name,
+                event_type="agent_early_exit",
+                tool="none",
+                status="ok",
+                detail=(
+                    f"Finalización anticipada de '{agent_name}': trabajo completado según "
+                    "estado local validado sin requerir turno adicional del modelo."
+                ),
+            )
+            break
 
     agent_usage = tracer.get_usage_summary().get("by_agent", {}).get(agent_name, {})
     return {
