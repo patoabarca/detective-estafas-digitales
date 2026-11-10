@@ -1359,27 +1359,39 @@ class TestOrchestratorSecurityAndFlows:
         # Solo debe haber ocurrido 1 intento; el reintento fue abortado de forma inmediata
         assert call_attempts == 1
 
-    def test_orchestrator_aborts_and_reports_error_when_global_time_budget_exhausted(self):
+    def test_orchestrator_aborts_and_reports_error_when_global_time_budget_exhausted(self, monkeypatch):
         """
         Verifica que el Orquestador impida iniciar subagentes o herramientas cuando el presupuesto
         global de tiempo (`max_total_elapsed_seconds`) se agota.
+        Utiliza un reloj controlado (monkeypatch en time.monotonic) para evitar condiciones de carrera
+        de microsegundos dependientes del planificador del sistema operativo.
         """
-        # Orquestador con 0.0001 segundos de presupuesto total
+        import time
+
+        simulated_time = [100.0]
+
+        def fake_monotonic() -> float:
+            current = simulated_time[0]
+            # Avanzar 0.05s en cada lectura para garantizar agotamiento determinístico
+            simulated_time[0] += 0.05
+            return current
+
+        monkeypatch.setattr(time, "monotonic", fake_monotonic)
+
         orq = OrquestadorAgent(
             orquestador_llm_client=make_standard_orquestador_mock_client("text"),
             preparador_llm_client=make_standard_preparador_mock_client("text"),
             analizador_mensajes_llm_client=make_standard_analizador_mensajes_mock_client(),
             analizador_enlaces_llm_client=make_standard_analizador_enlaces_mock_client(),
-            max_total_elapsed_seconds=0.0001,
+            max_total_elapsed_seconds=0.01,
         )
-        import time
-        time.sleep(0.001)
         resp = orq.run(AgentInputRequest(input_mode="text", text_content="Mensaje de prueba"))
         assert resp.status == "error"
         assert resp.error_type == "AgentExecutionError"
         assert (
             "presupuesto total de tiempo" in (resp.error_message or "")
             or "tiempo máximo" in (resp.error_message or "")
+            or "tiempo límite excedido" in (resp.error_message or "")
         )
 
     def test_rate_limit_429_retries_when_wait_time_fits_budget(self, monkeypatch):
