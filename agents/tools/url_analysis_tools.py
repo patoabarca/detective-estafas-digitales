@@ -341,8 +341,8 @@ def execute_tool_analizar_url(
             "status": "no_links",
             "processed_count": 0,
             "total_session_links": 0,
+            "pending_url_ids": [],
             "results": [],
-            "warnings": ["No existen enlaces extraídos en la sesión actual para analizar."],
             "error_message": None,
         }
 
@@ -517,17 +517,18 @@ def execute_tool_analizar_url(
             it.to_engine_url_dict() for it in url_state.analyzed_items_by_id.values()
         ]
 
+        # Determinar enlaces pendientes en la sesión (para que el modelo decida continuación si fue un lote parcial)
+        pending_ids = [
+            uid for uid in prep_ctx.url_id_map.keys()
+            if uid not in url_state.analyzed_items_by_id
+        ]
+
         return {
             "status": "ok",
             "processed_count": len(sanitized_results_for_llm),
             "total_session_links": len(prep_ctx.url_id_map),
+            "pending_url_ids": pending_ids,
             "results": sanitized_results_for_llm,
-            "warnings": [
-                sanitize_text_for_external_llm(
-                    sanitize_url_component_for_external_llm(w)[0]
-                ).masked_text
-                for w in url_state.warnings
-            ],
             "error_message": None,
         }
 
@@ -536,36 +537,61 @@ def execute_tool_analizar_url(
     except Exception as exc:
         err_msg = f"Fallo en tool_analizar_url: {str(exc)}"
         url_state.tool_errors.append(err_msg)
+        pending_ids = [
+            uid for uid in prep_ctx.url_id_map.keys()
+            if uid not in url_state.analyzed_items_by_id
+        ]
         return {
             "status": "tool_error",
             "processed_count": 0,
             "total_session_links": len(prep_ctx.url_id_map),
+            "pending_url_ids": pending_ids,
             "results": [],
-            "warnings": [],
             "error_message": err_msg,
         }
 
 
 def _build_sanitized_item_for_llm(item: UrlItemAnalysisResult) -> Dict[str, Any]:
     """
-    Construye la representación sanitizada de un `UrlItemAnalysisResult` para ser
-    enviada al modelo externo en `function_response`, ocultando credenciales embebidas
-    o PII en rutas/parámetros.
+    Construye la representación sanitizada y compacta de un `UrlItemAnalysisResult`
+    para ser enviada al modelo externo en `function_response`.
+    Elimina duplicaciones entre señales, advertencias por ítem y advertencias globales:
+    - Conserva identificador, URL sanitizada, estado del enlace, esquema, dominio y reglas activadas.
+    - Conserva evidencias sanitizadas y tipos de señal sin duplicar descripciones redundantes.
+    - Solo incluye advertencias no redundantes (ej. formato no analizable u OCR) cuando no
+      deriven directamente de las reglas ya informadas.
+    - Preserva la corrección de privacidad sanitizando cualquier valor sensible residual.
     """
     safe_signals = []
     for s in item.senales_encontradas:
         safe_ev = sanitize_url_component_for_external_llm(s.evidencia)[0]
         safe_ev = sanitize_text_for_external_llm(safe_ev).masked_text
-        safe_desc = sanitize_text_for_external_llm(s.descripcion).masked_text
         safe_signals.append(
             {
                 "id_regla": s.id_regla,
                 "tipo_senal": s.tipo_senal,
                 "evidencia": safe_ev,
-                "descripcion": safe_desc,
             }
         )
-    return {
+
+    # Identificar advertencias específicas no redundantes (ej. error de formato o distorsión OCR)
+    specific_warnings: List[str] = []
+    if item.estado_enlace == "direccion_no_analizable":
+        for w in item.advertencias:
+            safe_w = sanitize_text_for_external_llm(
+                sanitize_url_component_for_external_llm(w)[0]
+            ).masked_text
+            if safe_w not in specific_warnings:
+                specific_warnings.append(safe_w)
+    elif item.ocr_warnings:
+        for ow in item.ocr_warnings:
+            exp = ow.get("explanation")
+            if exp:
+                safe_exp = sanitize_text_for_external_llm(exp).masked_text
+                if safe_exp not in specific_warnings:
+                    specific_warnings.append(safe_exp)
+
+    res: Dict[str, Any] = {
         "url_id": item.url_id,
         "masked_url": item.masked_url,
         "estado_enlace": item.estado_enlace,
@@ -573,11 +599,8 @@ def _build_sanitized_item_for_llm(item: UrlItemAnalysisResult) -> Dict[str, Any]
         "domain": item.domain,
         "reglas_activadas": list(item.reglas_activadas),
         "senales_encontradas": safe_signals,
-        "advertencias": [
-            sanitize_text_for_external_llm(
-                sanitize_url_component_for_external_llm(w)[0]
-            ).masked_text
-            for w in item.advertencias
-        ],
     }
+    if specific_warnings:
+        res["advertencias_especificas"] = specific_warnings
+    return res
 
