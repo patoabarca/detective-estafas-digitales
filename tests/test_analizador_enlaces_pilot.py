@@ -713,7 +713,8 @@ def test_no_links_specialist_isolation_vs_orchestrator_skipping():
 
     assert res_specialist.cantidad_enlaces_extraidos == 0
     assert res_specialist.cantidad_enlaces_procesados == 0
-    assert len(mock_client_specialist.models.calls_history) == 2  # 2 turnos simulados del ciclo del agente
+    # Optimización Tarea 4: finalización anticipada evita turno de resumen descartado
+    assert len(mock_client_specialist.models.calls_history) == 1
 
     # B. Flujo completo en el Orquestador
     url_mock_client = make_standard_analizador_enlaces_mock_client()

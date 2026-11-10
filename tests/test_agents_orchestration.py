@@ -677,7 +677,9 @@ class TestAnalizadorEnlacesAndUrlRules:
         assert res.detalle_estado == "analizados_con_senales"
         assert res.cantidad_enlaces_extraidos == 3
         assert res.cantidad_enlaces_procesados == 3
-        assert len(mock_client.models.calls_history) == 2
+        # Optimización Tarea 4: con finalización anticipada basada en estado local,
+        # una llamada en lote que procesa todos los enlaces evita el turno de resumen final.
+        assert len(mock_client.models.calls_history) == 1
 
         by_id = {it.url_id: it for it in res.enlaces_analizados}
         assert by_id["URL-1"].estado_enlace == "analizado_sin_senales"
