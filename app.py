@@ -385,18 +385,33 @@ def render_results_section(report: Dict[str, Any]) -> None:
                 )
             if usage_data:
                 st.markdown("---")
+                display_dict = usage_data.get("display") or {}
+                tot_display = display_dict.get("total_tokens") or (
+                    str(usage_data.get("total_tokens")) if usage_data.get("total_tokens") is not None else "no disponible"
+                )
+                p_display = display_dict.get("prompt_tokens") or (
+                    str(usage_data.get("prompt_tokens_total")) if usage_data.get("prompt_tokens_total") is not None else "no disponible"
+                )
+                o_display = display_dict.get("output_tokens") or (
+                    str(usage_data.get("output_tokens_total")) if usage_data.get("output_tokens_total") is not None else "no disponible"
+                )
                 st.markdown(
                     f"- **Consumo acumulado de la solicitud:** `{usage_data.get('llm_calls_total', 0)}` llamadas al modelo, "
                     f"`{usage_data.get('tool_calls_total', 0)}` llamadas a herramientas, "
-                    f"`{usage_data.get('total_tokens', 0)}` tokens totales "
-                    f"(`{usage_data.get('prompt_tokens_total', 0)}` entrada + `{usage_data.get('output_tokens_total', 0)}` salida)."
+                    f"`{tot_display}` tokens totales "
+                    f"(`{p_display}` entrada + `{o_display}` salida)."
                 )
                 by_agent = usage_data.get("by_agent") or {}
                 if by_agent:
-                    agent_metrics_parts = [
-                        f"`{ag_name}`: {ag_m.get('llm_calls', 0)} llamadas LLM / {ag_m.get('tool_calls', 0)} tools / {ag_m.get('total_tokens', 0)} tokens"
-                        for ag_name, ag_m in by_agent.items()
-                    ]
+                    agent_metrics_parts = []
+                    for ag_name, ag_m in by_agent.items():
+                        ag_disp = ag_m.get("display") or {}
+                        ag_tot = ag_disp.get("total_tokens") or (
+                            str(ag_m.get("total_tokens")) if ag_m.get("total_tokens") is not None else "no disponible"
+                        )
+                        agent_metrics_parts.append(
+                            f"`{ag_name}`: {ag_m.get('llm_calls', 0)} llamadas LLM / {ag_m.get('tool_calls', 0)} tools / {ag_tot} tokens"
+                        )
                     st.markdown(f"- **Desglose por agente:** {' • '.join(agent_metrics_parts)}")
             if prep_data.get("advertencias"):
                 st.markdown("**Advertencias de preparación/lectura:**")
