@@ -202,8 +202,9 @@ def test_threat_detection_negation_and_advisory_context_limits():
     assert len(snips3) == 0
 
     # 3. Contexto de consejo/informativo que cita una amenaza:
-    # Por diseño defensivo, la frase maliciosa citada es detectada como patrón textual sospechoso,
-    # ya que descartar comillas universalmente permitiría evasiones de phishing entrecomillado.
+    # El consejo educativo que cita una amenaza es un falso positivo conocido del detector actual,
+    # no una clasificación correcta. Se documenta expresamente esta limitación del detector estático
+    # ya que descartar comillas universalmente permitiría evasiones por phishing entrecomillado.
     det_adv, snips_adv = analyzer._detect_blocking_threats(
         "Consejo de seguridad: si recibís 'su cuenta va a ser bloqueada', no respondas ni ingreses."
     )

@@ -118,7 +118,7 @@ class ReportGenerator:
             detail = ", ".join(detected_items) if detected_items else "señales aisladas"
             return (
                 f"Si bien se identificaron {detail}, los indicadores no alcanzan la severidad ni la combinación "
-                "de una estafa o maniobra maliciosa concluyente (Riesgo Bajo). "
+                "de señales de alto riesgo (Riesgo Bajo). "
                 "De todos modos, recordá actuar con cautela y verificar la autenticidad por canales oficiales."
             )
 
