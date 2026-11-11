@@ -254,12 +254,12 @@ class TextAnalyzer:
 
     def _detect_blocking_threats(self, text: str) -> Tuple[bool, List[str]]:
         patterns = [
-            r"(?i)\b(?:cuenta(?:\s+bancaria|\s+de\s+correo)?|acceso|tarjeta|servicio|l[ií]nea(?:\s+m[oó]vil)?|buz[oó]n|perfil)\s+(?:ser[aá]\s+|permanecer[aá]\s+)?(?:suspendid[oa]|bloquead[oa]|cancelad[oa]|inhabilitad[oa]|eliminad[oa]|dad[oa]\s+de\s+baja|restringid[oa])\b",
-            r"(?i)\b(?:procederemos\s+a\s+|vamos\s+a\s+|se\s+proceder[aá]\s+a\s+)?(?:dar\s+de\s+baja|suspender|bloquear|inhabilitar|cancelar|eliminar)\s+(?:su\s+|tu\s+|la\s+|el\s+)?(?:cuenta(?:\s+de\s+correo)?|servicio|l[ií]nea(?:\s+m[oó]vil)?|buz[oó]n|correo|acceso|suscripci[oó]n)\b",
+            r"(?i)\b(?:cuentas?(?:\s+bancarias?|\s+de\s+correo)?|accesos?|tarjetas?|servicios?|l[ií]neas?(?:\s+m[oó]viles?)?|buzones|buz[oó]n|perfiles|perfil)\s+(?:ser[aá]n?|permanecer[aá]n?|va\s+a\s+ser|van\s+a\s+ser|ha\s+sido|han\s+sido|fue|fueron|est[aá]n?)?\s*(?:suspendid[oa]s?|bloquead[oa]s?|cancelad[oa]s?|inhabilitad[oa]s?|eliminad[oa]s?|dad[oa]s?\s+de\s+baja|restringid[oa]s?)\b",
+            r"(?i)\b(?:procederemos\s+a\s+|vamos\s+a\s+|se\s+proceder[aá]\s+a\s+)?(?:dar\s+de\s+baja|suspender|bloquear|inhabilitar|cancelar|eliminar)\s+(?:su\s+|tu\s+|la\s+|el\s+|sus\s+|tus\s+|las\s+|los\s+)?(?:cuentas?(?:\s+de\s+correo)?|servicios?|l[ií]neas?(?:\s+m[oó]viles?)?|buzones|buz[oó]n|correos?|accesos?|suscripci[oó]n|suscripciones)\b",
             r"(?i)\b(?:bloqueo|suspensi[oó]n|inhabilitaci[oó]n|cancelaci[oó]n|baja|eliminaci[oó]n)\s+(?:inmediat[oa]|preventiv[oa]|definitiv[oa]|temporal)\b",
             r"(?i)\b(?:actividad\s+(?:irregular|sospechosa|inusual|an[oó]mala)|acceso\s+no\s+autorizado|inicio\s+de\s+sesi[oó]n\s+(?:sospechoso|irregular)|transferencia\s+saliente\s+no\s+reconocida|denunciado\s+por\s+reiteradas\s+infracciones)\b",
             r"(?i)\b(?:evit(?:ar|e)|para\s+evitar)\s+(?:el\s+bloqueo|la\s+suspensi[oó]n|el\s+cierre|la\s+baja|la\s+cancelaci[oó]n|la\s+eliminaci[oó]n)\b",
-            r"(?i)\b(?:cuenta|servicio|acceso|usuario)\s+(?:ser[aá]\s+|permanecer[aá]\s+)?(?:inhabilitad[oa]|suspendid[oa]|bloquead[oa]|restringid[oa])\s*(?:si\s+no|a\s+menos\s+que|hasta\s+que)\b",
+            r"(?i)\b(?:cuentas?|servicios?|accesos?|usuarios?)\s+(?:ser[aá]n?|permanecer[aá]n?|va\s+a\s+ser|van\s+a\s+ser|ha\s+sido|han\s+sido|fue|fueron|est[aá]n?)?\s*(?:inhabilitad[oa]s?|suspendid[oa]s?|bloquead[oa]s?|restringid[oa]s?)\s*(?:si\s+no|a\s+menos\s+que|hasta\s+que)\b",
             r"(?i)\b(?:el\s+env[ií]o|el\s+paquete)\s+(?:ser[aá]\s+)?(?:devuelto\s+al\s+(?:dep[oó]sito|remitente)|retenido|cancelado)\b",
             r"(?i)\b(?:falta\s+validar\s+(?:el\s+)?domicilio|direcci[oó]n\s+incompleta|problemas?\s+con\s+la\s+entrega)\b",
             r"(?i)\b[uú]ltimo\s+aviso(?:\s+antes\s+de)?\b",
@@ -270,6 +270,9 @@ class TextAnalyzer:
         snippets: List[str] = []
         for pat in patterns:
             for match in re.finditer(pat, text):
+                preceding = text[max(0, match.start() - 25):match.start()]
+                if re.search(r"(?i)\b(?:no|nunca|jam[aá]s)\s*$", preceding):
+                    continue
                 snippets.append(match.group(0).strip())
         return len(snippets) > 0, snippets
 

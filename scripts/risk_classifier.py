@@ -226,10 +226,16 @@ class RiskClassifier:
             )
         else:
             level = "BAJO"
-            summary = (
-                "No se detectaron indicadores significativos conocidos de fraude o coerción. "
-                "IMPORTANTE: La ausencia de señales no garantiza que el mensaje sea genuino."
-            )
+            if indicators or url_analyses:
+                summary = (
+                    "Se detectaron señales aisladas o leves sin la severidad ni combinación requerida para riesgo medio o alto. "
+                    "IMPORTANTE: La ausencia de señales graves no garantiza que el mensaje sea genuino."
+                )
+            else:
+                summary = (
+                    "No se detectaron indicadores significativos conocidos de fraude o coerción. "
+                    "IMPORTANTE: La ausencia de señales no garantiza que el mensaje sea genuino."
+                )
 
         return {
             "level": level,

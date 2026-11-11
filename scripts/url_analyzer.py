@@ -13,10 +13,30 @@ import re
 from typing import Any, Dict, List
 import urllib.parse
 
+# TLDs comúnmente asociados a dominios desechables o de bajo costo para campañas de phishing
+SUSPICIOUS_TLDS = {
+    "xyz", "top", "online", "site", "club", "buzz", "click", "rest", "cam", "vip", "work", "cfd"
+}
+
+# TLDs reconocidos para extracción estática de dominios sin protocolo
+RECOGNIZED_TLDS = set(SUSPICIOUS_TLDS) | {
+    "com", "org", "net", "edu", "gob", "gov", "mil", "int", "info", "biz", "io", "app", "dev", "ai", "co", "me", "lat",
+    "ar", "cl", "uy", "br", "mx", "es", "us", "uk", "eu", "tech", "store", "shop", "link", "live", "vip",
+    "digital", "security", "account", "cloud", "space", "website", "pro",
+    "com.ar", "gob.ar", "edu.ar", "org.ar", "net.ar", "com.uy", "com.br", "com.mx", "com.co",
+}
+
+_TLD_PATTERN = "|".join(sorted([re.escape(t) for t in RECOGNIZED_TLDS], key=len, reverse=True))
+
 # Expresión regular robusta para extracción de URLs sin navegar a ellas
 URL_REGEX = re.compile(
-    r"""(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))""",
-    re.VERBOSE,
+    r"(?i)\b("
+    r"https?://[^\s()<>'\"]+"
+    r"|"
+    r"www\d{0,3}\.[a-z0-9.\-]+(?::\d+)?(?:/[^\s()<>'\"]*)?"
+    r"|"
+    r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:" + _TLD_PATTERN + r")(?![a-z0-9-])(?::\d+)?(?:/[^\s()<>'\"]*)?"
+    r")"
 )
 
 COMMON_TARGET_BRANDS = [
@@ -67,12 +87,6 @@ DECEPTIVE_SECURITY_KEYWORDS = [
     "gestion",
 ]
 
-# TLDs comúnmente asociados a dominios desechables o de bajo costo para campañas de phishing
-SUSPICIOUS_TLDS = {
-    "xyz", "top", "online", "site", "club", "buzz", "click", "rest", "cam", "vip", "work", "cfd"
-}
-
-
 def extract_urls(text: str) -> List[str]:
     """
     Extrae todas las URLs presentes en el texto recibido.
@@ -81,12 +95,20 @@ def extract_urls(text: str) -> List[str]:
     if not text:
         return []
 
-    matches = URL_REGEX.findall(text)
+    matches = URL_REGEX.finditer(text)
     urls: List[str] = []
+    trailing_chars = ".,;:?!()[]{}\'\"«»“”‘’"
     for match in matches:
-        raw_url = match[0].strip()
-        # Normalizar si empieza con www. sin esquema
-        if raw_url.lower().startswith("www."):
+        start_idx = match.start(1)
+        # Ignorar direcciones de correo electrónico donde el host está precedido inmediatamente por '@'
+        if start_idx > 0 and text[start_idx - 1] == "@":
+            continue
+
+        raw_url = match.group(1).strip()
+        while raw_url and raw_url[-1] in trailing_chars:
+            raw_url = raw_url[:-1]
+        # Normalizar si no tiene esquema para que urllib.parse identifique host y componentes
+        if not (raw_url.lower().startswith("http://") or raw_url.lower().startswith("https://")):
             raw_url = "http://" + raw_url
         if raw_url not in urls:
             urls.append(raw_url)

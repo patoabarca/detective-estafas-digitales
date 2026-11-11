@@ -1102,7 +1102,12 @@ class OrquestadorAgent:
                 error_message="El Agente Orquestador completó los análisis pero no delegó la evaluación al Agente Evaluador.",
             )
 
-        final_report = eval_final.to_engine_report()
+        final_report = eval_final.to_engine_report(
+            input_char_count=len(prep_final.texto_extraido_o_recibido),
+            input_mode=prep_final.modalidad_entrada,
+        )
+        final_report["input_char_count"] = len(prep_final.texto_extraido_o_recibido)
+        final_report["input_mode"] = prep_final.modalidad_entrada
 
         tracer.record(
             agent=self.name,
