@@ -270,6 +270,9 @@ class TextAnalyzer:
         snippets: List[str] = []
         for pat in patterns:
             for match in re.finditer(pat, text):
+                preceding = text[max(0, match.start() - 25):match.start()]
+                if re.search(r"(?i)\b(?:no|nunca|jam[aá]s)\s*$", preceding):
+                    continue
                 snippets.append(match.group(0).strip())
         return len(snippets) > 0, snippets
 

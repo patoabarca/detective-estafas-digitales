@@ -176,3 +176,95 @@ def test_agent_orchestrated_pipeline_case_coherence_and_char_count():
 
     explanation = final_report.get("non_technical_explanation", "")
     assert "No encontramos en el texto las frases típicas" not in explanation
+
+
+def test_threat_detection_negation_and_advisory_context_limits():
+    """
+    Verifica el comportamiento de detección de amenazas ante:
+    - Negaciones explícitas ("Su cuenta no va a ser bloqueada", "No vamos a bloquear su cuenta").
+    - Mensajes de consejo o advertencia que citan frases de phishing ("Consejo: si recibís 'su cuenta va a ser bloqueada', no respondas").
+    Documenta la limitación intrínseca de contexto: citas textuales son reconocidas como señuelo.
+    """
+    analyzer = TextAnalyzer(load_policy())
+
+    # 1. Negación con 'no' entre sujeto y perífrasis pasiva
+    det_neg1, snips1 = analyzer._detect_blocking_threats("Su cuenta no va a ser bloqueada.")
+    assert det_neg1 is False
+    assert len(snips1) == 0
+
+    # 2. Negación directa con 'no' antes del verbo activo
+    det_neg2, snips2 = analyzer._detect_blocking_threats("No vamos a bloquear su cuenta.")
+    assert det_neg2 is False
+    assert len(snips2) == 0
+
+    det_neg3, snips3 = analyzer._detect_blocking_threats("Nunca suspenderemos su servicio de banca móvil.")
+    assert det_neg3 is False
+    assert len(snips3) == 0
+
+    # 3. Contexto de consejo/informativo que cita una amenaza:
+    # Por diseño defensivo, la frase maliciosa citada es detectada como patrón textual sospechoso,
+    # ya que descartar comillas universalmente permitiría evasiones de phishing entrecomillado.
+    det_adv, snips_adv = analyzer._detect_blocking_threats(
+        "Consejo de seguridad: si recibís 'su cuenta va a ser bloqueada', no respondas ni ingreses."
+    )
+    assert det_adv is True
+    assert any("cuenta va a ser bloqueada" in s.lower() for s in snips_adv)
+
+
+def test_url_extraction_edge_cases_and_catalog_boundaries():
+    """
+    Verifica la extracción de dominios sin protocolo ante:
+    - Correos electrónicos (no deben extraerse como enlaces de navegación).
+    - Puntuación al final de una oración (debe recortarse limpiamente).
+    - URLs con parámetros de consulta y fragmentos (deben conservarse completos).
+    - Dominios con TLD fuera del catálogo (no deben coincidir parcialmente ni extraerse sin esquema).
+    """
+    # 1. Correos electrónicos
+    assert extract_urls("Escribinos a soporte@banco.com para más información.") == []
+    assert extract_urls("Contacto oficial: juan.perez@empresa.com.ar.") == []
+
+    # 2. Puntuación al final de la oración
+    res_punct = extract_urls("Ingrese a bbva.com.ar. No demore.")
+    assert res_punct == ["http://bbva.com.ar"]
+
+    res_comma = extract_urls("Visite misitio.online, antes de las 18.")
+    assert res_comma == ["http://misitio.online"]
+
+    # 3. URLs con parámetros y fragmentos
+    res_params = extract_urls("bbva.com/login?user=123&token=abc#seccion")
+    assert res_params == ["http://bbva.com/login?user=123&token=abc#seccion"]
+
+    # 4. Dominios con TLD fuera del catálogo
+    # Sin esquema ni www: no se extraen para evitar falsos positivos
+    assert extract_urls("Visite portal.internal para gestionar.") == []
+    assert extract_urls("Sitio falso en banco.tienda urgente.") == []
+
+    # Con www o esquema explícito: sí se extraen aunque el TLD no esté en el catálogo de schemeless
+    res_www = extract_urls("Consulte www.museo.museum para detalles.")
+    assert res_www == ["http://www.museo.museum"]
+
+    res_https = extract_urls("Sitio en https://banco.tienda para compras.")
+    assert res_https == ["https://banco.tienda"]
+
+
+def test_low_risk_with_isolated_signals_explanation_coherence():
+    """
+    Verifica que cuando un texto recibe puntaje bajo pero contiene alguna señal aislada
+    (ej. únicamente urgencia artificial = 15 pts < umbral medio de 20 pts),
+    la explicación no técnica reconozca el hallazgo y no afirme falsamente
+    que no se detectaron señales.
+    """
+    text_only_urgency = "Estimado cliente, por favor responder en las proximas horas para coordinar la reunión."
+    report = analyze_text(text_only_urgency, input_mode="text")
+
+    risk = report["risk_assessment"]
+    assert risk["level"] == "BAJO"
+    assert risk["score"] == 15
+    assert any("REGLA-ING-02" in r for r in risk["activated_rules"])
+
+    # La explicación debe reconocer la señal y su alcance, sin negar su existencia
+    explanation = report["non_technical_explanation"]
+    assert "No encontramos en el texto las frases típicas" not in explanation
+    assert "apuro o urgencia temporal" in explanation
+    assert "Riesgo Bajo" in explanation
+

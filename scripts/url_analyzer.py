@@ -35,7 +35,7 @@ URL_REGEX = re.compile(
     r"|"
     r"www\d{0,3}\.[a-z0-9.\-]+(?::\d+)?(?:/[^\s()<>'\"]*)?"
     r"|"
-    r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:" + _TLD_PATTERN + r")(?::\d+)?(?:/[^\s()<>'\"]*)?"
+    r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:" + _TLD_PATTERN + r")(?![a-z0-9-])(?::\d+)?(?:/[^\s()<>'\"]*)?"
     r")"
 )
 
@@ -99,6 +99,11 @@ def extract_urls(text: str) -> List[str]:
     urls: List[str] = []
     trailing_chars = ".,;:?!()[]{}\'\"«»“”‘’"
     for match in matches:
+        start_idx = match.start(1)
+        # Ignorar direcciones de correo electrónico donde el host está precedido inmediatamente por '@'
+        if start_idx > 0 and text[start_idx - 1] == "@":
+            continue
+
         raw_url = match.group(1).strip()
         while raw_url and raw_url[-1] in trailing_chars:
             raw_url = raw_url[:-1]

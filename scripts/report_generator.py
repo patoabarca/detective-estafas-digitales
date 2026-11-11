@@ -106,6 +106,22 @@ class ReportGenerator:
             )
 
         # BAJO
+        if indicators or url_analyses:
+            detected_items = []
+            if any(i.get("id") == "ING-URGENCIA-ARTIFICIAL" for i in indicators):
+                detected_items.append("expresiones de apuro o urgencia temporal")
+            if any(i.get("id") == "SUP-SUPLANTACION-ENTIDAD" for i in indicators):
+                detected_items.append("menciones institucionales")
+            if url_analyses:
+                detected_items.append("enlaces en el texto")
+
+            detail = ", ".join(detected_items) if detected_items else "señales aisladas"
+            return (
+                f"Si bien se identificaron {detail}, los indicadores no alcanzan la severidad ni la combinación "
+                "de una estafa o maniobra maliciosa concluyente (Riesgo Bajo). "
+                "De todos modos, recordá actuar con cautela y verificar la autenticidad por canales oficiales."
+            )
+
         return (
             "No encontramos en el texto las frases típicas de estafas conocidas (como apuros, amenazas de bloqueo o pedidos de claves). "
             "De todos modos, recordá que ninguna herramienta automática puede darte una garantía del 100%, por lo que siempre debés actuar con cautela."
