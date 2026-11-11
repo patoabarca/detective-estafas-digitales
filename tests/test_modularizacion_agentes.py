@@ -109,3 +109,83 @@ def test_preparador_result_builder_all_states():
     ctx_ok.extracted_urls = ["https://ejemplo.test/login"]
     r_ok_links = build_validated_preparation_result(ctx_ok, skills)
     assert r_ok_links.estado == "correcto" and r_ok_links.detalle_estado == "con_enlaces"
+
+
+# =============================================================================
+# 2. AnalizadorMensajesAgent
+# =============================================================================
+
+PRE_TASK6_MSG_ANALYZER_SYSTEM_CHARS = 12205
+PRE_TASK6_MSG_ANALYZER_SYSTEM_BYTES = 12355
+
+
+def test_analizador_mensajes_modular_exports_and_prompt_builder():
+    """Verifica re-exportaciones, declaraciones uniformes y sanitización del prompt."""
+    from agents.analizador_mensajes.agent import (
+        ANALIZADOR_MENSAJES_AGENT_NAME,
+        ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+        ANALIZADOR_MENSAJES_ALLOWED_TOOLS,
+        ANALIZADOR_MENSAJES_BASE_INSTRUCTIONS,
+        ANALIZADOR_MENSAJES_TOOL_DECLARATIONS,
+        AnalizadorMensajesAgent,
+    )
+    from agents.analizador_mensajes.prompts import build_untrusted_message_prompt
+
+    assert ANALIZADOR_MENSAJES_AGENT_NAME == "analizador_mensajes"
+    assert len(ANALIZADOR_MENSAJES_ALLOWED_SKILLS) == 5
+    assert len(ANALIZADOR_MENSAJES_ALLOWED_TOOLS) == 5
+    assert len(ANALIZADOR_MENSAJES_TOOL_DECLARATIONS) == 5
+    assert "<untrusted_message>" in ANALIZADOR_MENSAJES_BASE_INSTRUCTIONS
+
+    prompt = build_untrusted_message_prompt(42, "Texto [REDACTED] de prueba")
+    assert "42 caracteres" in prompt
+    assert "<untrusted_message>" in prompt
+    assert "Texto [REDACTED] de prueba" in prompt
+
+
+def test_analizador_mensajes_system_instruction_concise_and_complete():
+    """Verifica reducción de build_system_instruction() conservando las 5 skills y reglas."""
+    from agents.analizador_mensajes.agent import (
+        ANALIZADOR_MENSAJES_ALLOWED_SKILLS,
+        AnalizadorMensajesAgent,
+    )
+
+    agent = AnalizadorMensajesAgent()
+    sys_inst = agent.build_system_instruction()
+
+    assert len(sys_inst) < PRE_TASK6_MSG_ANALYZER_SYSTEM_CHARS
+    assert len(sys_inst.encode("utf-8")) < PRE_TASK6_MSG_ANALYZER_SYSTEM_BYTES
+    for skill_name in ANALIZADOR_MENSAJES_ALLOWED_SKILLS:
+        assert skill_name in sys_inst
+    assert "confirm_session_text=true" in sys_inst
+
+
+def test_analizador_mensajes_result_builder_incomplete_and_complete():
+    """Verifica que build_validated_message_analysis_result nunca marque correcto si falta una categoría."""
+    from agents.analizador_mensajes.agent import ANALIZADOR_MENSAJES_ALLOWED_SKILLS
+    from agents.analizador_mensajes.result_builder import build_validated_message_analysis_result
+    from agents.tools.message_analysis_tools import MessageAnalysisSessionState
+    from agents.common.contracts import REQUIRED_MESSAGE_ANALYSIS_CATEGORIES
+
+    ctx = PreparationSessionContext(
+        input_mode="text",
+        validation_done=True,
+        is_input_valid=True,
+        raw_active_text="Mensaje de prueba normal.",
+    )
+    skills = list(ANALIZADOR_MENSAJES_ALLOWED_SKILLS)
+
+    # Faltan categorías -> incompleto
+    partial_state = MessageAnalysisSessionState()
+    partial_state.register_category_review("urgencia", [], ctx.raw_active_text)
+    res_inc = build_validated_message_analysis_result(ctx, partial_state, skills)
+    assert res_inc.estado == "incompleto"
+    assert len(res_inc.categorias_no_revisadas) == 4
+
+    # 5/5 categorías revisadas -> correcto
+    full_state = MessageAnalysisSessionState()
+    for cat in REQUIRED_MESSAGE_ANALYSIS_CATEGORIES:
+        full_state.register_category_review(cat, [], ctx.raw_active_text)
+    res_ok = build_validated_message_analysis_result(ctx, full_state, skills)
+    assert res_ok.estado == "correcto"
+    assert res_ok.categorias_no_revisadas == []
