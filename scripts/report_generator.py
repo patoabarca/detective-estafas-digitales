@@ -34,8 +34,9 @@ class ReportGenerator:
             "Modo Local Determinístico: todo el análisis se ejecutó localmente sin conexión de red ni llamadas a APIs externas."
         ),
         "agent_orchestrated": (
-            "Modo Orquesta de Agentes IA: la coordinación agéntica utilizó la API externa de Gemini sobre vistas "
-            "enmascaradas; los detectores heurísticos, el análisis de enlaces y el OCR se ejecutaron localmente."
+            "Modo Orquesta de Agentes IA: la coordinación agéntica utilizó la API externa de Gemini aplicando "
+            "ocultamiento preventivo de datos sensibles (sin garantizar su eliminación total); "
+            "los detectores heurísticos, el análisis de enlaces y el OCR se ejecutaron localmente."
         ),
         "shared": (
             "En Modo Local Determinístico el flujo se ejecuta sin red; en Modo Orquesta de Agentes IA la coordinación "
@@ -151,7 +152,8 @@ class ReportGenerator:
                 )
             elif has_url_signals:
                 parts.append(
-                    "El mensaje incluye un enlace con anomalías estructurales detectadas de forma estática que no corresponden a un sitio oficial verificable."
+                    "El mensaje incluye un enlace con señales sintácticas inusuales detectadas de forma estática; "
+                    "el análisis sintáctico por sí solo no verifica ni descarta si el sitio es auténtico."
                 )
             else:
                 parts.append(

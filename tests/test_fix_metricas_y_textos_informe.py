@@ -336,6 +336,17 @@ def test_explanation_never_claims_fake_page_when_url_has_no_signals():
     pdf_bytes = generate_pdf_report(orch_resp.report)
     assert pdf_bytes.startswith(b"%PDF-")
 
+    # Incluso cuando la URL sí tiene señales sintácticas, no se afirma "página falsa" ni autenticidad verificable
+    url_sig_exp = ReportGenerator().build_non_technical_explanation(
+        risk_level="ALTO",
+        indicators=[],
+        url_analyses=[{"raw_url": "http://192.168.10.25/validar", "is_ip_address": True, "findings": ["IP en host"], "status": "analizado_con_senales"}],
+        prompt_injection=False,
+    ).lower()
+    assert "página falsa" not in url_sig_exp
+    assert "no corresponden a un sitio oficial" not in url_sig_exp
+    assert "no verifica ni descarta" in url_sig_exp
+
 
 def test_limitations_accurately_distinguish_local_vs_orchestrated_and_static_urls():
     """
@@ -366,6 +377,7 @@ def test_limitations_accurately_distinguish_local_vs_orchestrated_and_static_url
     orch_resp = orq.run(AgentInputRequest(input_mode="text", text_content=msg))
     orch_lims = " | ".join(orch_resp.report["limitations"]).lower()
     assert "api externa de gemini" in orch_lims
+    assert "ocultamiento preventivo" in orch_lims and "sin garantizar" in orch_lims
     assert "estático" in orch_lims and "dns" in orch_lims and "whois" in orch_lims
     assert "ocr" in orch_lims and "localmente" in orch_lims
     assert "no se realizaron peticiones de red" not in orch_lims

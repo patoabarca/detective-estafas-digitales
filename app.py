@@ -416,7 +416,7 @@ def render_results_section(report: Dict[str, Any]) -> None:
                 f"- *{privacy_data.get('disclaimer', '')}*"
             )
 
-        with st.expander("🧭 Trazabilidad de Eventos de Agentes y Herramientas (Sin Secretos)"):
+        with st.expander("🧭 Trazabilidad de Eventos de Agentes y Herramientas (Ocultamiento Preventivo)"):
             if trace_list:
                 for ev in trace_list:
                     st.markdown(
