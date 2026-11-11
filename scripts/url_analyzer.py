@@ -260,3 +260,67 @@ def analyze_urls_in_text(text: str) -> List[Dict[str, Any]]:
     """
     urls = extract_urls(text)
     return [analyze_single_url(u) for u in urls]
+
+
+def classify_url_risk_signals(url_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Clasifica las señales de riesgo formalizadas (REGLA-URL-01..05 e informativas)
+    a partir del resultado devuelto por analyze_single_url.
+    Centraliza la correspondencia canónica de reglas, evitando duplicar lógica o re-analizar cadenas.
+    """
+    findings: List[str] = list(url_dict.get("findings", []))
+    is_ip: bool = bool(url_dict.get("is_ip_address", False))
+    has_puny: bool = bool(url_dict.get("has_punycode", False))
+    has_userinfo: bool = bool(url_dict.get("has_userinfo", False))
+
+    has_misleading_subdomain = any(
+        "Uso engañoso" in f or "términos engañosos" in f for f in findings
+    )
+    has_suspicious_tld = any("extensión de dominio de bajo costo" in f for f in findings)
+    has_sensitive_params = any("parámetros sensibles" in f for f in findings)
+    has_http = any("Utiliza HTTP sin cifrado" in f for f in findings)
+
+    # Reglas activadas para cómputo de puntaje en RiskClassifier
+    # (REGLA-URL-05 suma puntaje únicamente si no concurre con REGLA-URL-02)
+    scoring_rules: List[str] = []
+    if is_ip:
+        scoring_rules.append("REGLA-URL-01")
+    if has_misleading_subdomain:
+        scoring_rules.append("REGLA-URL-02")
+    if has_puny:
+        scoring_rules.append("REGLA-URL-03")
+    if has_userinfo:
+        scoring_rules.append("REGLA-URL-04")
+    if has_suspicious_tld and not has_misleading_subdomain:
+        scoring_rules.append("REGLA-URL-05")
+
+    # Todas las reglas estructurales presentes (para trazabilidad en UrlItemAnalysisResult)
+    all_rule_ids: List[str] = []
+    if is_ip:
+        all_rule_ids.append("REGLA-URL-01")
+    if has_misleading_subdomain:
+        all_rule_ids.append("REGLA-URL-02")
+    if has_puny:
+        all_rule_ids.append("REGLA-URL-03")
+    if has_userinfo:
+        all_rule_ids.append("REGLA-URL-04")
+    if has_suspicious_tld:
+        all_rule_ids.append("REGLA-URL-05")
+
+    # Determinar si el enlace presenta vectores maliciosos para combinaciones críticas
+    is_suspicious_url = (
+        is_ip or has_misleading_subdomain or has_suspicious_tld or has_puny or has_userinfo
+    )
+
+    return {
+        "is_ip": is_ip,
+        "has_misleading_subdomain": has_misleading_subdomain,
+        "has_suspicious_tld": has_suspicious_tld,
+        "has_puny": has_puny,
+        "has_userinfo": has_userinfo,
+        "has_sensitive_params": has_sensitive_params,
+        "has_http": has_http,
+        "scoring_rules": scoring_rules,
+        "all_rule_ids": all_rule_ids,
+        "is_suspicious_url": is_suspicious_url,
+    }

@@ -26,7 +26,6 @@ from agents.analizador_enlaces.prompts import (
 from agents.analizador_enlaces.result_builder import build_validated_url_analysis_result
 from agents.common.contracts import UrlAnalysisResult
 from agents.common.llm_client import run_agent_tool_loop
-from agents.common.privacy import sanitize_url_for_external_llm
 from agents.common.skill_loader import format_skills_prompt_section, load_skills_for_agent
 from agents.common.traceability import AgentTracer
 from agents.tools.preparation_tools import PreparationSessionContext
@@ -115,15 +114,8 @@ class AnalizadorEnlacesAgent:
         """
         t0 = time.monotonic()
 
-        # Asegurar que url_id_map esté sincronizado con extracted_urls
-        if not session_ctx.url_id_map and session_ctx.extracted_urls:
-            session_ctx.url_id_map = {
-                f"URL-{idx}": u for idx, u in enumerate(session_ctx.extracted_urls, start=1)
-            }
-            session_ctx.masked_url_id_map = {
-                uid: sanitize_url_for_external_llm(u)[0]
-                for uid, u in session_ctx.url_id_map.items()
-            }
+        # Asegurar que url_id_map esté sincronizado con extracted_urls mediante el método canónico
+        session_ctx.ensure_url_maps()
 
         tracer.record(
             agent=self.name,
