@@ -124,7 +124,7 @@ El repositorio cuenta con **16 Skills** en `.agents/skills/`, cuyas instruccione
 | `generar-pdf` | `evaluador` | `tool_generar_pdf` | — | Generar informe descargable en PDF en memoria (ReportLab) a partir de la evaluación final validada. |
 | `detective-estafas-digitales` | Agente IDE Antigravity | `scripts/worker.py` (CLI / STDIN) | Todas las reglas del motor | Manifiesto integral para el análisis directo desde el chat de Antigravity IDE. |
 
-Además, el **Agente Orquestador** (`orquestador`) tiene una lista cerrada de **4 herramientas** registradas en `agents/orquestador/agent.py`, cuyo orden obligatorio se hace cumplir en código Python:
+Además, el **Agente Orquestador** (`orquestador`) tiene una lista cerrada de **4 herramientas** registradas en `agents/orquestador/delegation_tools.py` (declaradas en `agents/orquestador/prompts.py`), cuyo orden obligatorio se hace cumplir en código Python:
 1. `delegar_preparacion`: Invoca al `PreparadorAgent` y devuelve `PreparationResult`.
 2. `delegar_analisis_mensaje`: Invoca al `AnalizadorMensajesAgent` únicamente si `PreparationResult.estado == "correcto"` y devuelve `MessageAnalysisResult`.
 3. `delegar_analisis_enlaces`: Invoca al `AnalizadorEnlacesAgent` condicionalmente si se extrajeron enlaces en la preparación (`len(enlaces_encontrados) > 0`). Si no hay enlaces, omite la llamada registrando el motivo (`sin_enlaces`) sin tratarlo como error.
@@ -175,51 +175,64 @@ detective-estafas-digitales/
 ├── .agents/                          # Skills del sistema (cargadas por Antigravity y por skill_loader.py)
 │   └── skills/
 │       ├── detective-estafas-digitales/SKILL.md
-│       ├── validar-entrada/SKILL.md
-│       ├── extraer-texto-captura/SKILL.md
-│       ├── extraer-enlaces/SKILL.md
-│       ├── detectar-urgencia/SKILL.md
-│       ├── detectar-amenazas/SKILL.md
-│       ├── detectar-premios/SKILL.md
-│       ├── detectar-pedidos-datos/SKILL.md
-│       ├── detectar-pedidos-dinero/SKILL.md
-│       ├── analizar-url/SKILL.md
-│       ├── reunir-hallazgos/SKILL.md
-│       ├── calcular-puntaje/SKILL.md
-│       ├── asignar-nivel-riesgo/SKILL.md
-│       ├── explicar-resultado/SKILL.md
-│       ├── recomendar-cuidados/SKILL.md
-│       └── generar-pdf/SKILL.md
+│       ├── validar-entrada/{SKILL.md, references/}
+│       ├── extraer-texto-captura/{SKILL.md, references/}
+│       ├── extraer-enlaces/{SKILL.md, references/}
+│       ├── detectar-urgencia/{SKILL.md, references/}
+│       ├── detectar-amenazas/{SKILL.md, references/}
+│       ├── detectar-premios/{SKILL.md, references/}
+│       ├── detectar-pedidos-datos/{SKILL.md, references/}
+│       ├── detectar-pedidos-dinero/{SKILL.md, references/}
+│       ├── analizar-url/{SKILL.md, references/}
+│       ├── reunir-hallazgos/{SKILL.md, references/}
+│       ├── calcular-puntaje/{SKILL.md, references/}
+│       ├── asignar-nivel-riesgo/{SKILL.md, references/}
+│       ├── explicar-resultado/{SKILL.md, references/}
+│       ├── recomendar-cuidados/{SKILL.md, references/}
+│       └── generar-pdf/{SKILL.md, references/}
 │
-├── agents/                           # Orquesta de Agentes IA - Etapas 1 a 4
+├── agents/                           # Orquesta de Agentes IA - Etapas 1 a 4 (arquitectura modular)
 │   ├── common/
+│   │   ├── context_metrics.py        # Medición determinística de contexto enviado en caracteres y bytes UTF-8
 │   │   ├── contracts.py              # Contratos (AgentInputRequest, PreparationResult, MessageAnalysisResult, UrlAnalysisResult, EvaluationResult, OrchestratorResponse)
 │   │   ├── skill_loader.py           # Cargador y validador programático de SKILL.md y permisos por agente
 │   │   ├── llm_client.py             # Ciclo real de tool-calling (y parallel tool-calling) con google-genai, límites y timeouts
-│   │   ├── privacy.py                # Enmascaramiento preventivo de PII en textos, URLs y respuestas de herramientas
+│   │   ├── privacy.py                # Enmascaramiento preventivo de PII y mapeo estable de sesión para URLs
 │   │   └── traceability.py           # Registro auditable de eventos y acumulador de llamadas/tokens por agente
 │   ├── tools/
 │   │   ├── preparation_tools.py      # Herramientas Python de preparación
-│   │   ├── url_tools.py              # Herramienta Python de auditoría sintáctica de URLs en lote (Zero Network)
+│   │   ├── message_analysis_tools.py # 5 herramientas Python de detección de señales con verificación literal de evidencia
+│   │   ├── url_analysis_tools.py     # Herramienta Python modularizada de auditoría sintáctica de URLs (Zero Network)
 │   │   └── evaluation_tools.py       # 6 herramientas Python de evaluación (reunir, calcular, clasificar, explicar, recomendar, pdf)
-│   │   └── message_analysis_tools.py # 5 herramientas Python de detección de señales con verificación literal de evidencia
 │   ├── preparador/
-│   │   └── agent.py                  # Agente Preparador (PreparadorAgent)
+│   │   ├── agent.py                  # Coordinador del Agente Preparador (PreparadorAgent)
+│   │   ├── prompts.py                # Instrucciones base, declaraciones de herramientas y armado de prompts
+│   │   └── result_builder.py         # Construcción y validación de PreparationResult
 │   ├── analizador_mensajes/
+│   │   ├── agent.py                  # Coordinador del Agente Analizador de Mensajes (AnalizadorMensajesAgent)
+│   │   ├── prompts.py                # Instrucciones base, declaraciones de herramientas y vista <untrusted_message>
+│   │   └── result_builder.py         # Construcción y validación de MessageAnalysisResult
 │   ├── analizador_enlaces/
-│   │   └── agent.py                  # Agente Analizador de Enlaces (AnalizadorEnlacesAgent)
+│   │   ├── agent.py                  # Coordinador del Agente Analizador de Enlaces (finalización anticipada)
+│   │   ├── prompts.py                # Instrucciones base, declaraciones y vista <untrusted_urls>
+│   │   └── result_builder.py         # Construcción y validación de UrlAnalysisResult
 │   ├── evaluador/
-│   │   └── agent.py                  # Agente Evaluador (EvaluadorAgent) con 6 skills especializadas
-│   │   └── agent.py                  # Agente Analizador de Mensajes (AnalizadorMensajesAgent)
+│   │   ├── agent.py                  # Coordinador del Agente Evaluador (EvaluadorAgent) con 6 skills especializadas
+│   │   ├── prompts.py                # Instrucciones base, prioridades, declaraciones y prompt condicional de PDF
+│   │   └── result_builder.py         # Construcción, salvaguardas INDETERMINADO y validación de EvaluationResult
 │   └── orquestador/
-│       └── agent.py                  # Agente Orquestador (OrquestadorAgent) que coordina el flujo de 4 etapas
+│       ├── agent.py                  # Coordinador del Agente Orquestador (OrquestadorAgent)
+│       ├── prompts.py                # Instrucciones del sistema, declaraciones de delegación y prompt inicial
+│       ├── delegation_tools.py       # Estado de sesión aislado y 4 herramientas de delegación con precondiciones
+│       └── result_builder.py         # Reportes seguros INDETERMINADO, omisión de enlaces y OrchestratorResponse final
 │
-├── scripts/                          # Motor determinístico funcional (Python 3.10+)
+├── scripts/                          # Motor determinístico funcional y utilidades
 │   ├── worker.py                     # Punto de entrada seguro (CLI / STDIN / Pipeline)
 │   ├── analyzer.py                   # Analizador heurístico y compositor de hallazgos de agentes sin duplicación
-│   ├── url_analyzer.py               # Extracción y auditoría estática de URLs (IP, Punycode, Subdominios)
+│   ├── url_analyzer.py               # Extracción y auditoría estática de URLs + classify_url_risk_signals
 │   ├── risk_classifier.py            # Motor de clasificación de riesgo explicable (BAJO/MEDIO/ALTO/INDET)
-│   └── report_generator.py           # Generador de reportes en JSON estructurado y Markdown
+│   ├── report_generator.py           # Generador de reportes en JSON estructurado y Markdown
+│   └── reproduce_context_baseline.py # Script reproducible offline para línea base de contexto
 │
 ├── web/                              # Capa de presentación y servicios locales reutilizados
 │   ├── analysis_adapter.py           # Adaptador seguro entre Streamlit/Agentes y scripts/
@@ -232,9 +245,15 @@ detective-estafas-digitales/
 │   ├── policy.json                   # Políticas de ejecución, límites de tamaño y ponderaciones
 │   └── result_schema.json            # Esquema JSON Schema del reporte final
 │
-└── tests/                            # Batería de 115 pruebas automatizadas con pytest
-    ├── test_agents_orchestration.py  # 31 pruebas de Orquestador, Preparador, Analizador de Mensajes, Skills, equivalencia y seguridad
-    └── ...                           # 84 pruebas existentes del motor, OCR, PDF, CLI, Docker y seguridad web
+├── docs/                             # Manuales, métricas, auditorías de contexto y documentos de arquitectura
+│   ├── refactorizacion_logica_compartida.md   # Consolidación de reglas URL, IDs de sesión y desacoplamiento (Tarea 5)
+│   └── modularizacion_agentes_y_skills.md     # Modularización de agentes y depuración de SKILL.md (Tarea 6)
+│
+└── tests/                            # Batería de pruebas automatizadas con pytest (216 pruebas totales)
+    ├── test_agents_orchestration.py          # Orquestador, especialistas, skills, equivalencia y seguridad
+    ├── test_refactor_logica_compartida.py    # Reglas URL compartidas, aislamiento de sesión y tool_order_priority
+    ├── test_modularizacion_agentes.py        # Modularización por agente, reducción de SKILL.md y línea base
+    └── ...                                   # Motor determinístico, OCR, PDF, CLI, métricas, regresiones y seguridad web
 ```
 
 ---
