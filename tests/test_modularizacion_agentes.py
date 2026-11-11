@@ -189,3 +189,101 @@ def test_analizador_mensajes_result_builder_incomplete_and_complete():
     res_ok = build_validated_message_analysis_result(ctx, full_state, skills)
     assert res_ok.estado == "correcto"
     assert res_ok.categorias_no_revisadas == []
+
+
+# =============================================================================
+# 3. EvaluadorAgent
+# =============================================================================
+
+PRE_TASK6_EVALUADOR_SYSTEM_CHARS = 21707
+PRE_TASK6_EVALUADOR_SYSTEM_BYTES = 21986
+
+
+def test_evaluador_modular_exports_and_prompt_builder():
+    """Verifica re-exportaciones, mapa de prioridades y prompt condicional de PDF."""
+    from agents.evaluador.agent import (
+        EVALUADOR_AGENT_NAME,
+        EVALUADOR_ALLOWED_SKILLS,
+        EVALUADOR_ALLOWED_TOOLS,
+        EVALUADOR_BASE_INSTRUCTIONS,
+        EVALUADOR_TOOL_DECLARATIONS,
+        EVALUADOR_TOOL_ORDER_PRIORITY,
+        EvaluadorAgent,
+    )
+    from agents.evaluador.prompts import build_evaluador_user_prompt
+    from agents.common.contracts import MessageAnalysisResult, PreparationResult
+
+    assert EVALUADOR_AGENT_NAME == "evaluador"
+    assert len(EVALUADOR_ALLOWED_SKILLS) == 6
+    assert len(EVALUADOR_ALLOWED_TOOLS) == 6
+    assert len(EVALUADOR_TOOL_DECLARATIONS) == 6
+    assert EVALUADOR_TOOL_ORDER_PRIORITY["tool_reunir_hallazgos"] < EVALUADOR_TOOL_ORDER_PRIORITY["tool_generar_pdf"]
+    assert "NUNCA calcules" in EVALUADOR_BASE_INSTRUCTIONS
+
+    prep_ok = PreparationResult(
+        estado="correcto",
+        detalle_estado="sin_enlaces",
+        texto_extraido_o_recibido="Texto de ejemplo suficientemente largo para probar.",
+        modalidad_entrada="text",
+    )
+    msg_ok = MessageAnalysisResult(
+        estado="correcto",
+        categorias_revisadas=["urgencia", "amenazas", "premios", "pedidos_datos", "pedidos_dinero"],
+        categorias_sin_hallazgos=["urgencia", "amenazas", "premios", "pedidos_datos", "pedidos_dinero"],
+        categorias_no_revisadas=[],
+    )
+
+    p_no_pdf = build_evaluador_user_prompt("text", prep_ok, msg_ok, None, generate_pdf=False, save_pdf_to_output=False)
+    assert "omití `tool_generar_pdf`" in p_no_pdf
+
+    p_with_pdf = build_evaluador_user_prompt("text", prep_ok, msg_ok, None, generate_pdf=True, save_pdf_to_output=True)
+    assert "ejecutá también `tool_generar_pdf` con save_to_output=true" in p_with_pdf
+
+
+def test_evaluador_system_instruction_concise_and_complete():
+    """Verifica reducción sustancial de build_system_instruction() conservando las 6 skills y salvaguardas."""
+    from agents.evaluador.agent import EVALUADOR_ALLOWED_SKILLS, EvaluadorAgent
+
+    agent = EvaluadorAgent()
+    sys_inst = agent.build_system_instruction()
+
+    assert len(sys_inst) < PRE_TASK6_EVALUADOR_SYSTEM_CHARS
+    assert len(sys_inst.encode("utf-8")) < PRE_TASK6_EVALUADOR_SYSTEM_BYTES
+    for skill_name in EVALUADOR_ALLOWED_SKILLS:
+        assert skill_name in sys_inst
+    assert "RIESGO BAJO" in sys_inst
+    assert "ReportLab" in sys_inst or "bytes binarios" in sys_inst
+
+
+def test_evaluador_result_builder_safeguards():
+    """Verifica que etapas previas incompletas o con error siempre fuercen INDETERMINADO (nunca BAJO)."""
+    from agents.evaluador.agent import EVALUADOR_ALLOWED_SKILLS
+    from agents.evaluador.result_builder import build_validated_evaluation_result
+    from agents.tools.evaluation_tools import EvaluationSessionState
+    from agents.common.contracts import MessageAnalysisResult, PreparationResult
+
+    skills = list(EVALUADOR_ALLOWED_SKILLS)
+    prep_inc = PreparationResult(
+        estado="incompleto",
+        detalle_estado="texto_no_extraible",
+        texto_extraido_o_recibido="",
+        modalidad_entrada="ocr_screenshot",
+        mensaje_error="Imagen ilegible",
+    )
+    msg_dummy = MessageAnalysisResult(
+        estado="incompleto",
+        categorias_revisadas=[],
+        categorias_sin_hallazgos=[],
+        categorias_no_revisadas=["urgencia", "amenazas", "premios", "pedidos_datos", "pedidos_dinero"],
+    )
+    state = EvaluationSessionState(
+        raw_text="",
+        input_mode="ocr_screenshot",
+        prep_res=prep_inc,
+        msg_res=msg_dummy,
+        url_res=None,
+    )
+    res = build_validated_evaluation_result(state, prep_inc, msg_dummy, None, skills)
+    assert res.estado == "incompleto"
+    assert res.nivel_riesgo == "INDETERMINADO"
+    assert res.puntaje == 0
