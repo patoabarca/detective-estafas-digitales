@@ -231,6 +231,7 @@ def run_agent_tool_loop(
     max_tool_calls: int = MAX_TOOL_CALLS_DEFAULT,
     max_elapsed_seconds: float = MAX_ELAPSED_SECONDS_DEFAULT,
     should_terminate_early: Optional[Callable[[], bool]] = None,
+    tool_order_priority: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Any]:
     """
     Ejecuta el ciclo real de un agente con un modelo de IA y una lista cerrada de herramientas:
@@ -554,22 +555,7 @@ def run_agent_tool_loop(
                 }
             )
 
-        if len(fn_calls) > 1:
-            tool_order_priority = {
-                # Preparador
-                "tool_validar_entrada": 10,
-                "tool_extraer_texto_captura": 20,
-                "tool_extraer_enlaces": 30,
-                # Analizador Enlaces
-                "tool_analizar_url": 10,
-                # Evaluador
-                "tool_reunir_hallazgos": 10,
-                "tool_calcular_puntaje": 20,
-                "tool_asignar_nivel_riesgo": 30,
-                "tool_explicar_resultado": 40,
-                "tool_recomendar_cuidados": 45,
-                "tool_generar_pdf": 50,
-            }
+        if len(fn_calls) > 1 and tool_order_priority:
             fn_calls = sorted(
                 fn_calls,
                 key=lambda fc: tool_order_priority.get(str(getattr(fc, "name", "") or ""), 99),

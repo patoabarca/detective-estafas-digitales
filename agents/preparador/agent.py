@@ -47,6 +47,12 @@ PREPARADOR_ALLOWED_TOOLS: List[str] = [
     "tool_extraer_enlaces",
 ]
 
+PREPARADOR_TOOL_ORDER_PRIORITY: Dict[str, int] = {
+    "tool_validar_entrada": 10,
+    "tool_extraer_texto_captura": 20,
+    "tool_extraer_enlaces": 30,
+}
+
 PREPARADOR_BASE_INSTRUCTIONS = """Sos el Agente Preparador del sistema de ciberseguridad 'Detective de Estafas Digitales'.
 Tu única función es preparar y estructurar la entrada del usuario utilizando EXCLUSIVAMENTE las herramientas Python autorizadas.
 
@@ -198,6 +204,7 @@ class PreparadorAgent:
             model_name=self.model_name,
             max_tool_calls=5,
             max_elapsed_seconds=max_elapsed_seconds,
+            tool_order_priority=PREPARADOR_TOOL_ORDER_PRIORITY,
         )
 
         result = self._build_validated_result(session_ctx)
