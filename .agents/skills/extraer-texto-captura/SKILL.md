@@ -9,32 +9,14 @@ allowed_agents:
   - preparador
 ---
 
-# 📷 Skill: Extraer Texto de Captura (`extraer-texto-captura`)
+# Skill: Extraer Texto de Captura (`extraer-texto-captura`)
 
-## 1. Única Responsabilidad
-Ejecutar el reconocimiento óptico de caracteres (OCR) local sobre la imagen validada en la sesión actual, sanear el texto extraído y detectar anomalías tipográficas típicas del OCR sobre posibles URLs, sin enviar la imagen a servicios externos ni inventar contenido cuando la imagen sea ilegible.
-
-## 2. Qué Recibe (Entrada)
-Recibe mediante la herramienta `tool_extraer_texto_captura` la orden de procesar la imagen ya validada en el contexto seguro de la sesión actual (sin aceptar rutas arbitrarias del sistema de archivos).
-
-## 3. Qué Devuelve (Salida)
-Devuelve un diccionario estructurado (`OCRToolOutput`) con:
-- `status`:
-  - `"ok"`: se extrajo texto legible de la captura.
-  - `"empty_or_illegible"`: el motor OCR funcionó pero la captura no contiene texto legible o está en blanco.
-  - `"tool_error"`: Tesseract OCR no está disponible en el entorno o falló durante el procesamiento.
-- `extracted_text`: cadena de texto extraída (con datos sensibles enmascarados para el contexto del agente, preservando el original en memoria local). Vacía (`""`) si no se pudo extraer texto.
-- `char_count`: longitud del texto extraído.
-- `language_used`: idioma empleado por Tesseract (ej. `"spa+eng"`).
-- `ocr_url_warnings`: lista de advertencias sobre posibles distorsiones del OCR en enlaces (espacios en protocolos, comas por puntos, `'vv'` por `'w'`, números por letras).
-- `error_message`: detalle técnico claro cuando `status` es `"tool_error"` o `"empty_or_illegible"`.
-
-## 4. Herramienta Python Utilizada
-- Función registrada: `tool_extraer_texto_captura` en `agents/tools/preparation_tools.py`.
-- Reutiliza internamente `preprocess_image_for_ocr` (`web/image_processor.py`) y `get_ocr_service` (`web/ocr_service.py`).
-
-## 5. Límites y Manejo de Errores
-- **Cero invención de texto:** si la captura es borrosa, ilegible o no tiene texto, devuelve `status: "empty_or_illegible"` y `extracted_text: ""`. El agente **jamás** debe inventar o suponer el texto de la captura.
-- **Procesamiento 100% local:** la imagen jamás se envía a la API del LLM; se procesa localmente con Tesseract en memoria RAM.
-- **Diferenciación de fallos:** distingue explícitamente entre captura sin texto legible (`"empty_or_illegible"` -> estado de preparación `"incompleto"`) y fallo técnico del binario OCR (`"tool_error"` -> estado de preparación `"error"`).
-
+## Instrucciones Operativas de `tool_extraer_texto_captura`
+1. **Precondición:** Invocala únicamente en modo `"ocr_screenshot"` después de que `tool_validar_entrada` devuelva `status="ok"`. Acepta opcionalmente `preprocess` (booleano).
+2. **Interpretación de estado:**
+   - `status="ok"`: se extrajo texto legible; continuá invocando `tool_extraer_enlaces`.
+   - `status="empty_or_illegible"`: la imagen no contiene texto legible; **NO** invoques `tool_extraer_enlaces` y finalizá informando el estado incompleto.
+   - `status="tool_error"`: fallo del motor OCR local; finalizá informando el error técnico.
+3. **Reglas estrictas:**
+   - **Cero invención ni autocorrección:** jamás inventes texto si la captura es ilegible ni corrijas URLs con advertencias OCR (`ocr_url_warnings`).
+   - **Procesamiento local:** la imagen se procesa 100% en memoria RAM sin enviarse a servicios externos.

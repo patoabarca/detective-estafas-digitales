@@ -9,28 +9,9 @@ allowed_agents:
   - analizador_mensajes
 ---
 
-# 🔐 Skill: Detectar Pedidos de Datos Sensibles (`detectar-pedidos-datos`)
+# Skill: Detectar Pedidos de Datos Sensibles (`detectar-pedidos-datos`)
 
-## 1. Única Responsabilidad
-Identificar solicitudes directas o indirectas de datos sensibles, claves, códigos de verificación (OTP/SMS), tokens o formularios de validación de identidad (`FRA-CAPTURA-CREDENCIALES`) en el texto preparado de la sesión actual, excluyendo advertencias educativas legítimas (por ejemplo, *"Nunca compartas tu clave"*).
-
-## 2. Qué Recibe (Entrada)
-Recibe a través de la herramienta `tool_detectar_pedidos_datos` la confirmación para analizar el texto preparado de la sesión (`confirm_session_text: true`).
-
-## 3. Qué Devuelve (Salida)
-Devuelve un diccionario estructurado con:
-- `status`: `"ok"` o `"tool_error"`.
-- `category_reviewed`: `"pedidos_datos"`.
-- `detected`: booleano (`true` si se detectó pedido de datos sensibles, `false` si se revisó sin hallazgos).
-- `signals`: lista de señales detectadas (`id: "FRA-CAPTURA-CREDENCIALES"`, `category: "captura_datos"`, `skill_category: "pedidos_datos"`, `severity: "ALTA"`, `description` y `evidence_snippets` sanitizados).
-- `warnings`: lista de advertencias si las hubiera.
-
-## 4. Herramienta Python Utilizada
-- Función registrada: `tool_detectar_pedidos_datos` en `agents/tools/message_analysis_tools.py`.
-- Reutiliza internamente `TextAnalyzer._detect_credential_harvesting` de `scripts/analyzer.py`.
-
-## 5. Límites y Manejo de Errores
-- **Responsabilidad acotada:** No evalúa transferencias de dinero ni DEBIN, no analiza URLs, no realiza OCR ni calcula el puntaje de riesgo final.
-- **Evidencia verificada y privacidad:** Verifica que los fragmentos existan en el texto preparado y aplica enmascaramiento preventivo antes de devolverlos al modelo externo.
-- **Manejo de errores:** Informa cualquier fallo técnico mediante `status: "tool_error"`.
-
+## Instrucciones Operativas de `tool_detectar_pedidos_datos`
+1. **Ejecución:** Invocá `tool_detectar_pedidos_datos` con `confirm_session_text=true` sobre el texto preparado en sesión para evaluar la categoría `"pedidos_datos"` (`FRA-CAPTURA-CREDENCIALES`).
+2. **Estado y errores:** Devuelve `status="ok"` (`detected=true/false`) o `status="tool_error"` si falla la herramienta.
+3. **Límites y privacidad:** Evaluá solo solicitudes de claves, tokens, OTP/SMS, PIN o validación de identidad (respetando advertencias preventivas legítimas); devolvé evidencia literal sanitizada, sin analizar URLs ni asignar riesgo final.
