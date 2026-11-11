@@ -287,3 +287,195 @@ def test_evaluador_result_builder_safeguards():
     assert res.estado == "incompleto"
     assert res.nivel_riesgo == "INDETERMINADO"
     assert res.puntaje == 0
+
+
+# =============================================================================
+# 4. OrquestadorAgent
+# =============================================================================
+
+PRE_TASK6_ORQUESTADOR_SYSTEM_CHARS = 2490
+PRE_TASK6_ORQUESTADOR_SYSTEM_BYTES = 2529
+
+
+def test_orquestador_modular_exports_and_prompt_builder():
+    """Verifica re-exportaciones, lista cerrada de 4 herramientas y armado de prompt."""
+    from agents.orquestador.agent import (
+        ORQUESTADOR_AGENT_NAME,
+        ORQUESTADOR_ALLOWED_TOOLS,
+        ORQUESTADOR_SYSTEM_INSTRUCTIONS,
+        ORQUESTADOR_TOOL_DECLARATIONS,
+        OrquestadorAgent,
+    )
+    from agents.orquestador.prompts import build_orquestador_user_prompt
+
+    assert ORQUESTADOR_AGENT_NAME == "orquestador"
+    assert len(ORQUESTADOR_ALLOWED_TOOLS) == 4
+    assert len(ORQUESTADOR_TOOL_DECLARATIONS) == 4
+    assert OrquestadorAgent().build_system_instruction() == ORQUESTADOR_SYSTEM_INSTRUCTIONS
+    assert len(ORQUESTADOR_SYSTEM_INSTRUCTIONS) <= PRE_TASK6_ORQUESTADOR_SYSTEM_CHARS
+    assert len(ORQUESTADOR_SYSTEM_INSTRUCTIONS.encode("utf-8")) <= PRE_TASK6_ORQUESTADOR_SYSTEM_BYTES
+
+    p = build_orquestador_user_prompt("ocr_screenshot")
+    assert "'ocr_screenshot'" in p
+    assert "delegar_preparacion" in p
+
+
+def test_orquestador_result_builder_omitted_and_incomplete_reports():
+    """Verifica omisión justificada de enlaces y reportes seguros INDETERMINADO."""
+    from agents.orquestador.result_builder import (
+        build_incomplete_message_analysis_report,
+        build_incomplete_ocr_report,
+        build_incomplete_url_analysis_report,
+        build_omitted_url_analysis_result,
+    )
+    from agents.common.contracts import (
+        MessageAnalysisResult,
+        PreparationResult,
+        UrlAnalysisResult,
+    )
+
+    omitted = build_omitted_url_analysis_result()
+    assert omitted.estado == "correcto"
+    assert omitted.detalle_estado == "sin_enlaces"
+    assert omitted.intervino_agente is False
+
+    prep_ocr = PreparationResult(
+        estado="incompleto",
+        detalle_estado="texto_no_extraible",
+        texto_extraido_o_recibido="",
+        modalidad_entrada="ocr_screenshot",
+    )
+    r_ocr = build_incomplete_ocr_report(prep_ocr)
+    assert r_ocr["risk_assessment"]["level"] == "INDETERMINADO"
+
+    prep_ok = PreparationResult(
+        estado="correcto",
+        detalle_estado="sin_enlaces",
+        texto_extraido_o_recibido="Texto válido de prueba.",
+        modalidad_entrada="text",
+    )
+    msg_inc = MessageAnalysisResult(
+        estado="incompleto",
+        categorias_revisadas=["urgencia"],
+        categorias_sin_hallazgos=["urgencia"],
+        categorias_no_revisadas=["amenazas", "premios", "pedidos_datos", "pedidos_dinero"],
+    )
+    r_msg = build_incomplete_message_analysis_report(prep_ok, msg_inc)
+    assert r_msg["risk_assessment"]["level"] == "INDETERMINADO"
+
+    url_inc = UrlAnalysisResult(
+        estado="incompleto",
+        detalle_estado="enlaces_omitidos",
+        intervino_agente=True,
+        cantidad_enlaces_extraidos=1,
+        cantidad_enlaces_procesados=0,
+        enlaces_omitidos=["URL-1"],
+    )
+    r_url = build_incomplete_url_analysis_report(prep_ok, msg_inc, url_inc)
+    assert r_url["risk_assessment"]["level"] == "INDETERMINADO"
+
+
+def test_orquestador_delegation_preconditions_enforced():
+    """Verifica que delegation_tools rechace ejecuciones fuera de orden o sin confirmación."""
+    import time
+    from agents.common.contracts import ContractValidationError
+    from agents.common.traceability import AgentTracer
+    from agents.orquestador.delegation_tools import (
+        OrchestrationSessionState,
+        execute_delegar_analisis_enlaces,
+        execute_delegar_analisis_mensaje,
+        execute_delegar_evaluacion,
+    )
+    import pytest
+
+    ctx = PreparationSessionContext(input_mode="text", raw_input_text="Texto")
+    state = OrchestrationSessionState(
+        session_ctx=ctx,
+        tracer=AgentTracer(),
+        started_monotonic=time.monotonic(),
+        max_total_elapsed_seconds=60.0,
+    )
+
+    with pytest.raises(ContractValidationError):
+        execute_delegar_analisis_mensaje(state, {"confirm_prepared": False})
+
+    rej_msg = execute_delegar_analisis_mensaje(state, {"confirm_prepared": True})
+    assert rej_msg["status"] == "rejected"
+
+    rej_url = execute_delegar_analisis_enlaces(state, {"confirm_links_present": True})
+    assert rej_url["status"] == "rejected"
+
+    rej_eval = execute_delegar_evaluacion(state, {"confirm_analyses_completed": True})
+    assert rej_eval["status"] == "rejected"
+
+
+def test_simulated_baseline_scenarios_preserve_turns_and_reduce_context():
+    """
+    Verifica sobre los 3 escenarios simulados reproducibles que:
+    - Se conservan intactas la cantidad de turnos y los agentes intervinientes.
+    - Se reduce el contexto acumulado (caracteres y bytes UTF-8) frente a la línea base
+      previa a la Tarea 6 (219594 / 237627 / 246689 chars).
+    """
+    from agents.common.contracts import AgentInputRequest
+    from scripts.reproduce_context_baseline import (
+        MockOCRForBaseline,
+        make_dummy_png_bytes,
+        run_scenario,
+    )
+
+    s1 = run_scenario(
+        "CMP-01",
+        "Texto sin enlaces",
+        AgentInputRequest(
+            input_mode="text",
+            text_content=(
+                "Estimado cliente: le informamos que su pedido #48921 ya se encuentra listo para "
+                "retiro en nuestra sucursal de Av. Corrientes 1234 de lunes a viernes de 9 a 18 hs. "
+                "Debe presentarse con su documento nacional de identidad."
+            ),
+        ),
+    )
+    assert s1["total_simulated_turns"] == 14
+    assert s1["accumulated_request_chars"] < 219594
+    assert s1["accumulated_request_bytes_utf8"] < 222168
+
+    s2 = run_scenario(
+        "CMP-02",
+        "Texto con dos enlaces ficticios",
+        AgentInputRequest(
+            input_mode="text",
+            text_content=(
+                "Alerta de Seguridad Banco Ficticio: Detectamos un acceso sospechoso a su cuenta online. "
+                "Para evitar la suspensión preventiva por 48 horas, valide su identidad en: "
+                "https://banco-seguro-falso.com/login o acceda al portal de sorteos en "
+                "https://promo-aniversario-falsa.xyz/premio para validar sus puntos."
+            ),
+        ),
+        requested_urls_for_enlaces=["URL-1", "URL-2"],
+    )
+    assert s2["total_simulated_turns"] == 16
+    assert s2["accumulated_request_chars"] < 237627
+    assert s2["accumulated_request_bytes_utf8"] < 240377
+
+    mock_ocr = MockOCRForBaseline(
+        text=(
+            "Notificación Judicial Ficticia: Se encuentra intimado a regularizar su deuda bancaria. "
+            "Evite el embargo judicial de haberes ingresando inmediatamente a: "
+            "https://portal-deuda-ficticio.online/pagar dentro de las próximas 2 horas."
+        ),
+        url_warnings=[{"snippet": "portal-deuda-ficticio.online", "explanation": "Dominio .online extraído por OCR"}],
+    )
+    s3 = run_scenario(
+        "CMP-03",
+        "Captura con OCR simulado y enlace",
+        AgentInputRequest(
+            input_mode="ocr_screenshot",
+            image_bytes=make_dummy_png_bytes(),
+            image_filename="captura_intimacion_ficticia.png",
+        ),
+        ocr_service=mock_ocr,
+        requested_urls_for_enlaces=["URL-1"],
+    )
+    assert s3["total_simulated_turns"] == 17
+    assert s3["accumulated_request_chars"] < 246689
+    assert s3["accumulated_request_bytes_utf8"] < 249570

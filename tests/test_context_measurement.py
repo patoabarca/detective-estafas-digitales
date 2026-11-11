@@ -111,7 +111,9 @@ def test_baseline_scenario_1_text_without_links():
     assert "analizador_enlaces" not in res["agents_involved"]
     assert set(res["agents_involved"]) == {"orquestador", "preparador", "analizador_mensajes", "evaluador"}
     assert res["total_simulated_turns"] == 14
-    assert res["accumulated_request_chars"] > 150000
+    # Reducción Tarea 6: depuración de SKILL.md en Preparador, Analizador de Mensajes y Evaluador
+    # (antes de Tarea 6 superaba 150000 chars; ahora se acota entre 80000 y 150000).
+    assert 80000 < res["accumulated_request_chars"] < 150000
 
 
 def test_baseline_scenario_2_text_with_two_links():
