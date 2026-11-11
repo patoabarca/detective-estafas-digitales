@@ -625,7 +625,11 @@ class EvaluationResult:
                 "Violación de seguridad: una evaluación incompleta o con error no puede clasificarse como RIESGO BAJO."
             )
 
-    def to_engine_report(self) -> Dict[str, Any]:
+    def to_engine_report(
+        self,
+        input_char_count: Optional[int] = None,
+        input_mode: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Convierte la evaluación al esquema unificado del reporte JSON de la aplicación."""
         from datetime import datetime, timezone
         injection_snips = [
@@ -634,7 +638,7 @@ class EvaluationResult:
             if ind.get("id") == "SEC-PROMPT-INJECTION"
             for snip in ind.get("evidence_snippets", [])
         ]
-        return {
+        report_dict: Dict[str, Any] = {
             "status": "success" if self.estado == "correcto" else self.estado,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "risk_assessment": {
@@ -655,6 +659,11 @@ class EvaluationResult:
             "recommendations": list(self.recomendaciones),
             "non_technical_explanation": self.explicacion_no_tecnica,
         }
+        if input_char_count is not None:
+            report_dict["input_char_count"] = input_char_count
+        if input_mode is not None:
+            report_dict["input_mode"] = input_mode
+        return report_dict
 
     def to_dict(self) -> Dict[str, Any]:
         self.validate()
