@@ -11,6 +11,11 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Tuple
 
+try:
+    from scripts.url_analyzer import classify_url_risk_signals
+except ModuleNotFoundError:
+    from url_analyzer import classify_url_risk_signals  # type: ignore[no-redef]
+
 
 class RiskClassifier:
     """
@@ -117,38 +122,30 @@ class RiskClassifier:
                     f"REGLA-SUP-01 (+{self.weight_entity} pts): Invocación de nombre institucional en contexto coercitivo o transaccional."
                 )
 
-        # Evaluación de URLs sospechosas
+        # Evaluación de URLs sospechosas utilizando derivación canónica centralizada
         for url_item in url_analyses:
-            findings = url_item.get("findings", [])
-            is_ip = url_item.get("is_ip_address", False)
-            has_puny = url_item.get("has_punycode", False)
-            has_userinfo = url_item.get("has_userinfo", False)
-
-            # Subdominios engañosos o IP directa
-            has_misleading_subdomain = any("Uso engañoso" in f or "términos engañosos" in f for f in findings)
-            has_suspicious_tld = any("extensión de dominio de bajo costo" in f for f in findings)
-
-            if is_ip:
+            sigs = classify_url_risk_signals(url_item)
+            if sigs["is_ip"]:
                 score += self.weight_suspicious_url
                 activated_rules.append(
                     f"REGLA-URL-01 (+{self.weight_suspicious_url} pts): Enlace sospechoso apuntando a dirección IP numérica sin dominio."
                 )
-            if has_misleading_subdomain:
+            if sigs["has_misleading_subdomain"]:
                 score += self.weight_suspicious_url
                 activated_rules.append(
                     f"REGLA-URL-02 (+{self.weight_suspicious_url} pts): Enlace con subdominio engañoso imitando una marca o portal de validación."
                 )
-            if has_puny:
+            if sigs["has_puny"]:
                 score += 25
                 activated_rules.append(
                     "REGLA-URL-03 (+25 pts): Enlace con punycode o caracteres homóglifos (suplantación visual)."
                 )
-            if has_userinfo:
+            if sigs["has_userinfo"]:
                 score += 20
                 activated_rules.append(
                     "REGLA-URL-04 (+20 pts): Enlace con credenciales embebidas (patrón user:pass@host)."
                 )
-            if has_suspicious_tld and not has_misleading_subdomain:
+            if sigs["has_suspicious_tld"] and not sigs["has_misleading_subdomain"]:
                 score += 20
                 activated_rules.append(
                     "REGLA-URL-05 (+20 pts): Enlace con extensión de dominio frecuentemente desechable."
@@ -199,8 +196,7 @@ class RiskClassifier:
         has_advance_fee = any(ind.get("id") == "FRA-PAGO-ANTICIPADO" for ind in indicators)
         has_debin = any(ind.get("id") == "FRA-DEBIN-ENGANOSO" for ind in indicators)
         has_bad_url = len(url_analyses) > 0 and any(
-            u.get("is_ip_address")
-            or any("Uso engañoso" in f or "bajo costo" in f or "términos engañosos" in f for f in u.get("findings", []))
+            classify_url_risk_signals(u)["is_suspicious_url"]
             for u in url_analyses
         )
 

@@ -20,6 +20,7 @@ from PIL import Image
 from agents.common.contracts import ContractValidationError, validate_tool_arguments
 from agents.common.privacy import (
     SanitizationReport,
+    build_session_url_maps,
     sanitize_text_for_external_llm,
     sanitize_url_for_external_llm,
 )
@@ -71,6 +72,11 @@ class PreparationSessionContext:
     url_details: List[Dict[str, Any]] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     tools_called: List[str] = field(default_factory=list)
+
+    def ensure_url_maps(self) -> None:
+        """Asegura la creación estable y sincronizada del mapeo de identificadores URL-1..N."""
+        if not self.url_id_map and self.extracted_urls:
+            self.url_id_map, self.masked_url_id_map = build_session_url_maps(self.extracted_urls)
 
 
 def execute_tool_validar_entrada(
@@ -398,11 +404,7 @@ def execute_tool_extraer_enlaces(
     try:
         urls = extract_urls(ctx.raw_active_text)
         ctx.extracted_urls = list(urls)
-        ctx.url_id_map = {f"URL-{idx}": raw_u for idx, raw_u in enumerate(urls, start=1)}
-        ctx.masked_url_id_map = {
-            url_id: sanitize_url_for_external_llm(raw_u)[0]
-            for url_id, raw_u in ctx.url_id_map.items()
-        }
+        ctx.ensure_url_maps()
         ctx.url_details = []
 
         ocr_link_warnings: List[str] = []

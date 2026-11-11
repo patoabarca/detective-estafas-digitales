@@ -106,6 +106,21 @@ def sanitize_url_for_external_llm(url: str) -> Tuple[str, int]:
         return fallback, fb_count
 
 
+def build_session_url_maps(urls: List[str]) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """
+    Construye de forma determinística y estable la correspondencia entre identificadores de sesión
+    ('URL-1', 'URL-2', ...), las URLs originales locales y sus representaciones sanitizadas para el modelo.
+    Conserva el orden canónico y el aislamiento de sesión sin estado global compartido.
+    """
+    url_id_map: Dict[str, str] = {}
+    masked_url_id_map: Dict[str, str] = {}
+    for idx, raw_u in enumerate(urls, start=1):
+        uid = f"URL-{idx}"
+        url_id_map[uid] = raw_u
+        masked_url_id_map[uid] = sanitize_url_for_external_llm(raw_u)[0]
+    return url_id_map, masked_url_id_map
+
+
 def sanitize_url_component_for_external_llm(component: str) -> Tuple[str, int]:
     """
     Oculta credenciales, parámetros sensibles, tokens de ruta y datos sensibles

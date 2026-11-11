@@ -48,6 +48,15 @@ from agents.tools.evaluation_tools import (
 from agents.tools.preparation_tools import PreparationSessionContext
 from scripts.report_generator import ReportGenerator
 
+EVALUADOR_TOOL_ORDER_PRIORITY: Dict[str, int] = {
+    "tool_reunir_hallazgos": 10,
+    "tool_calcular_puntaje": 20,
+    "tool_asignar_nivel_riesgo": 30,
+    "tool_explicar_resultado": 40,
+    "tool_recomendar_cuidados": 45,
+    "tool_generar_pdf": 50,
+}
+
 
 EVALUADOR_ALLOWED_SKILLS: List[str] = [
     "reunir-hallazgos",
@@ -313,6 +322,7 @@ class EvaluadorAgent:
             model_name=self.model_name,
             max_tool_calls=8,
             max_elapsed_seconds=max_elapsed_seconds,
+            tool_order_priority=EVALUADOR_TOOL_ORDER_PRIORITY,
         )
 
         result = self._build_validated_result(eval_state, prep_res, msg_res, url_res)

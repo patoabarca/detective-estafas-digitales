@@ -44,7 +44,7 @@ from agents.common.privacy import (
     sanitize_url_for_external_llm,
 )
 from agents.tools.preparation_tools import PreparationSessionContext
-from scripts.url_analyzer import analyze_single_url
+from scripts.url_analyzer import analyze_single_url, classify_url_risk_signals
 
 MAX_URLS_PER_CALL = 20
 
@@ -119,24 +119,16 @@ def _map_findings_to_signals_and_rules(
     """
     Traduce el diccionario devuelto por `analyze_single_url(raw_url)` a objetos
     `UrlSignalFinding` con identificadores de reglas estables (`REGLA-URL-01`..`REGLA-URL-05`
-    e informativos), respetando exactamente la lógica de `RiskClassifier`.
+    e informativos), utilizando la clasificación canónica centralizada de `classify_url_risk_signals`.
     """
-    findings: List[str] = url_dict.get("findings", [])
     domain: str = url_dict.get("domain", "no_identificado")
-    is_ip: bool = bool(url_dict.get("is_ip_address", False))
-    has_puny: bool = bool(url_dict.get("has_punycode", False))
-    has_userinfo: bool = bool(url_dict.get("has_userinfo", False))
-
-    has_misleading_subdomain = any(
-        "Uso engañoso" in f or "términos engañosos" in f for f in findings
-    )
-    has_suspicious_tld = any("extensión de dominio de bajo costo" in f for f in findings)
+    findings: List[str] = url_dict.get("findings", [])
+    classified = classify_url_risk_signals(url_dict)
 
     signals: List[UrlSignalFinding] = []
-    activated_rules: List[str] = []
 
     # 1. REGLA-URL-01: IP directa
-    if is_ip:
+    if classified["is_ip"]:
         ip_desc = next(
             (f for f in findings if "dirección IP" in f),
             f"El enlace apunta directamente a una dirección IP ({domain}).",
@@ -150,10 +142,9 @@ def _map_findings_to_signals_and_rules(
         )
         sig.validate(raw_url=raw_url, domain=domain)
         signals.append(sig)
-        activated_rules.append("REGLA-URL-01")
 
     # 2. REGLA-URL-02: Subdominio engañoso (marca o keyword de seguridad)
-    if has_misleading_subdomain:
+    if classified["has_misleading_subdomain"]:
         sub_findings = [
             f for f in findings if "Uso engañoso" in f or "términos engañosos" in f
         ]
@@ -167,10 +158,9 @@ def _map_findings_to_signals_and_rules(
             )
             sig.validate(raw_url=raw_url, domain=domain)
             signals.append(sig)
-        activated_rules.append("REGLA-URL-02")
 
     # 3. REGLA-URL-03: Punycode o caracteres homóglifos
-    if has_puny:
+    if classified["has_puny"]:
         puny_desc = next(
             (f for f in findings if "Punycode" in f or "homóglifos" in f),
             "El dominio utiliza codificación Punycode o caracteres homóglifos.",
@@ -184,10 +174,9 @@ def _map_findings_to_signals_and_rules(
         )
         sig.validate(raw_url=raw_url, domain=domain)
         signals.append(sig)
-        activated_rules.append("REGLA-URL-03")
 
     # 4. REGLA-URL-04: Credenciales embebidas (user:pass@host)
-    if has_userinfo:
+    if classified["has_userinfo"]:
         ui_desc = next(
             (f for f in findings if "credenciales embebidas" in f),
             "La URL contiene credenciales embebidas (patrón usuario:contraseña@host).",
@@ -201,10 +190,9 @@ def _map_findings_to_signals_and_rules(
         )
         sig.validate(raw_url=raw_url, domain=domain)
         signals.append(sig)
-        activated_rules.append("REGLA-URL-04")
 
     # 5. REGLA-URL-05: TLD de bajo costo / sospechoso
-    if has_suspicious_tld:
+    if classified["has_suspicious_tld"]:
         tld_desc = next(
             (f for f in findings if "extensión de dominio de bajo costo" in f),
             "El dominio utiliza una extensión de dominio de bajo costo.",
@@ -218,9 +206,6 @@ def _map_findings_to_signals_and_rules(
         )
         sig.validate(raw_url=raw_url, domain=domain)
         signals.append(sig)
-        # En RiskClassifier, REGLA-URL-05 suma puntos solo si no se activó REGLA-URL-02
-        if not has_misleading_subdomain:
-            activated_rules.append("REGLA-URL-05")
 
     # 6. Hallazgos informativos (no suman puntaje directo en RiskClassifier pero documentan estructura)
     for f in findings:
@@ -245,6 +230,7 @@ def _map_findings_to_signals_and_rules(
             sig.validate(raw_url=raw_url, domain=domain)
             signals.append(sig)
 
+    activated_rules = list(classified["scoring_rules"])
     return signals, activated_rules
 
 
@@ -292,26 +278,14 @@ def _is_unparseable_or_malformed_url(raw_url: str, analyzed: Dict[str, Any]) -> 
     return None
 
 
-def execute_tool_analizar_url(
+def _validate_and_resolve_url_ids(
+    requested_ids_raw: Any,
     prep_ctx: PreparationSessionContext,
-    url_state: UrlAnalysisSessionState,
-    raw_args: Optional[Dict[str, Any]] = None,
-    url_analyzer_override: Optional[Callable[[str], Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
+) -> List[str]:
     """
-    Herramienta Python de la skill `analizar-url`.
-    Recupera las URLs originales del estado local validado (`prep_ctx.url_id_map`)
-    y ejecuta `analyze_single_url` de `scripts/url_analyzer.py` sin realizar conexiones de red.
+    Valida y resuelve la lista de identificadores ('URL-1', 'URL-2' o 'ALL') solicitados por el modelo,
+    verificando que existan en prep_ctx.url_id_map y rechazando cualquier URL sustituida o inventada.
     """
-    validated_args = validate_tool_arguments(
-        tool_name="tool_analizar_url",
-        args=raw_args,
-        allowed_params={"url_ids": list},
-        required_params=["url_ids"],
-    )
-    url_state.tools_called.append("tool_analizar_url")
-
-    requested_ids_raw = validated_args.get("url_ids", [])
     if not isinstance(requested_ids_raw, list) or len(requested_ids_raw) == 0:
         raise ContractValidationError(
             "El parámetro 'url_ids' en 'tool_analizar_url' debe ser una lista no vacía de identificadores."
@@ -326,28 +300,6 @@ def execute_tool_analizar_url(
             "Todos los elementos de 'url_ids' en 'tool_analizar_url' deben ser cadenas no vacías."
         )
 
-    # Asegurar que el mapa de referencias exista si extracted_urls fue poblado
-    if not prep_ctx.url_id_map and prep_ctx.extracted_urls:
-        prep_ctx.url_id_map = {
-            f"URL-{idx}": u for idx, u in enumerate(prep_ctx.extracted_urls, start=1)
-        }
-        prep_ctx.masked_url_id_map = {
-            uid: sanitize_url_for_external_llm(u)[0]
-            for uid, u in prep_ctx.url_id_map.items()
-        }
-
-    if not prep_ctx.url_id_map:
-        return {
-            "status": "no_links",
-            "processed_count": 0,
-            "total_session_links": 0,
-            "pending_url_ids": [],
-            "results": [],
-            "error_message": None,
-        }
-
-    # Resolver "ALL" o validar que cada identificador pertenezca a prep_ctx.url_id_map.
-    # Rechazar cualquier URL inventada o sustituida por el modelo.
     resolved_ids: List[str] = []
     for req_id in requested_ids_raw:
         clean_id = req_id.strip()
@@ -363,174 +315,230 @@ def execute_tool_analizar_url(
                 f"Identificador de enlace inválido, inexistente o URL sustituida rechazada: '{clean_id}'. "
                 f"Identificadores válidos en la sesión: {list(prep_ctx.url_id_map.keys())}"
             )
+    return resolved_ids
 
+
+def _analyze_single_url_item(
+    uid: str,
+    raw_url: str,
+    masked_url: str,
+    prep_ctx: PreparationSessionContext,
+    url_state: UrlAnalysisSessionState,
+    analyzer_fn: Callable[[str], Dict[str, Any]],
+) -> UrlItemAnalysisResult:
+    """
+    Ejecuta el análisis estático de un enlace individual, determinando si es analizable,
+    mapeando hallazgos a señales de riesgo canónicas y gestionando advertencias OCR y de estado.
+    """
+    try:
+        raw_analysis = analyzer_fn(raw_url)
+    except ValueError as val_err:
+        unparseable_reason = (
+            f"La dirección '{masked_url}' tiene un formato inválido y no pudo analizarse: {str(val_err)}"
+        )
+        ocr_warns = _match_ocr_warnings_for_url(raw_url, "no_identificado", prep_ctx.ocr_url_warnings)
+        item_warns = [unparseable_reason]
+        for ow in ocr_warns:
+            exp = ow.get("explanation")
+            if exp and exp not in item_warns:
+                item_warns.append(exp)
+        for w in item_warns:
+            if w not in url_state.warnings:
+                url_state.warnings.append(w)
+
+        item_res = UrlItemAnalysisResult(
+            url_id=uid,
+            raw_url=raw_url,
+            masked_url=masked_url,
+            estado_enlace="direccion_no_analizable",
+            scheme="desconocido",
+            domain="no_identificado",
+            port=None,
+            is_ip_address=False,
+            has_punycode=False,
+            has_userinfo=False,
+            findings=[unparseable_reason],
+            senales_encontradas=[],
+            reglas_activadas=[],
+            advertencias=item_warns,
+            ocr_warnings=ocr_warns,
+        )
+        item_res.validate(allowed_raw_urls=prep_ctx.extracted_urls)
+        return item_res
+
+    malformed_reason = _is_unparseable_or_malformed_url(raw_url, raw_analysis)
+    domain = raw_analysis.get("domain", "no_identificado")
+    ocr_warns = _match_ocr_warnings_for_url(raw_url, domain, prep_ctx.ocr_url_warnings)
+
+    if malformed_reason is not None:
+        item_warns = [malformed_reason]
+        for ow in ocr_warns:
+            exp = ow.get("explanation")
+            if exp and exp not in item_warns:
+                item_warns.append(exp)
+        for w in item_warns:
+            if w not in url_state.warnings:
+                url_state.warnings.append(w)
+
+        item_res = UrlItemAnalysisResult(
+            url_id=uid,
+            raw_url=raw_url,
+            masked_url=masked_url,
+            estado_enlace="direccion_no_analizable",
+            scheme=raw_analysis.get("scheme", "desconocido"),
+            domain=domain,
+            port=raw_analysis.get("port"),
+            is_ip_address=bool(raw_analysis.get("is_ip_address", False)),
+            has_punycode=bool(raw_analysis.get("has_punycode", False)),
+            has_userinfo=bool(raw_analysis.get("has_userinfo", False)),
+            findings=list(raw_analysis.get("findings", [])) + [malformed_reason],
+            senales_encontradas=[],
+            reglas_activadas=[],
+            advertencias=item_warns,
+            ocr_warnings=ocr_warns,
+        )
+        item_res.validate(allowed_raw_urls=prep_ctx.extracted_urls)
+        return item_res
+
+    signals, activated_rules = _map_findings_to_signals_and_rules(raw_url, raw_analysis)
+    has_risk_signals = bool(activated_rules) or any(
+        s.id_regla == "INFO-URL-SENSITIVE-PARAMS" for s in signals
+    )
+    estado_enlace = "analizado_con_senales" if has_risk_signals else "analizado_sin_senales"
+
+    item_warns = []
+    for f_str in raw_analysis.get("findings", []):
+        if "HTTPS" not in f_str:
+            w_msg = f"URL [{domain}]: {f_str}"
+            item_warns.append(w_msg)
+            if w_msg not in url_state.warnings:
+                url_state.warnings.append(w_msg)
+            if w_msg not in prep_ctx.warnings:
+                prep_ctx.warnings.append(w_msg)
+
+    for ow in ocr_warns:
+        exp = ow.get("explanation")
+        if exp:
+            if exp not in item_warns:
+                item_warns.append(exp)
+            if exp not in url_state.warnings:
+                url_state.warnings.append(exp)
+
+    if estado_enlace == "analizado_sin_senales":
+        if NON_GUARANTEE_WARNING not in item_warns:
+            item_warns.append(NON_GUARANTEE_WARNING)
+        if NON_GUARANTEE_WARNING not in url_state.warnings:
+            url_state.warnings.append(NON_GUARANTEE_WARNING)
+
+    item_res = UrlItemAnalysisResult(
+        url_id=uid,
+        raw_url=raw_url,
+        masked_url=masked_url,
+        estado_enlace=estado_enlace,  # type: ignore[arg-type]
+        scheme=raw_analysis.get("scheme", "desconocido"),
+        domain=domain,
+        port=raw_analysis.get("port"),
+        is_ip_address=bool(raw_analysis.get("is_ip_address", False)),
+        has_punycode=bool(raw_analysis.get("has_punycode", False)),
+        has_userinfo=bool(raw_analysis.get("has_userinfo", False)),
+        findings=list(raw_analysis.get("findings", [])),
+        senales_encontradas=signals,
+        reglas_activadas=activated_rules,
+        advertencias=item_warns,
+        ocr_warnings=ocr_warns,
+    )
+    item_res.validate(allowed_raw_urls=prep_ctx.extracted_urls)
+    return item_res
+
+
+def _record_analyzed_item_in_session(
+    item_res: UrlItemAnalysisResult,
+    uid: str,
+    url_state: UrlAnalysisSessionState,
+    prep_ctx: PreparationSessionContext,
+) -> None:
+    """Registra el resultado del análisis en el estado local y sincroniza los detalles para el preparador."""
+    url_state.analyzed_items_by_id[uid] = item_res
+    prep_ctx.url_details = [
+        it.to_engine_url_dict() for it in url_state.analyzed_items_by_id.values()
+    ]
+
+
+def _build_compact_url_tool_response(
+    sanitized_results: List[Dict[str, Any]],
+    prep_ctx: PreparationSessionContext,
+    url_state: UrlAnalysisSessionState,
+) -> Dict[str, Any]:
+    """Construye la respuesta estructurada y compacta para el modelo con el conteo de pendientes."""
+    pending_ids = [
+        uid for uid in prep_ctx.url_id_map.keys()
+        if uid not in url_state.analyzed_items_by_id
+    ]
+    return {
+        "status": "ok",
+        "processed_count": len(sanitized_results),
+        "total_session_links": len(prep_ctx.url_id_map),
+        "pending_url_ids": pending_ids,
+        "results": sanitized_results,
+        "error_message": None,
+    }
+
+
+def execute_tool_analizar_url(
+    prep_ctx: PreparationSessionContext,
+    url_state: UrlAnalysisSessionState,
+    raw_args: Optional[Dict[str, Any]] = None,
+    url_analyzer_override: Optional[Callable[[str], Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """
+    Herramienta Python de la skill `analizar-url`.
+    Orquesta la validación de IDs, el análisis estático local y la respuesta compacta para el modelo.
+    """
+    validated_args = validate_tool_arguments(
+        tool_name="tool_analizar_url",
+        args=raw_args,
+        allowed_params={"url_ids": list},
+        required_params=["url_ids"],
+    )
+    url_state.tools_called.append("tool_analizar_url")
+
+    prep_ctx.ensure_url_maps()
+    if not prep_ctx.url_id_map:
+        return {
+            "status": "no_links",
+            "processed_count": 0,
+            "total_session_links": 0,
+            "pending_url_ids": [],
+            "results": [],
+            "error_message": None,
+        }
+
+    resolved_ids = _validate_and_resolve_url_ids(validated_args.get("url_ids", []), prep_ctx)
     analyzer_fn = url_analyzer_override or analyze_single_url
     sanitized_results_for_llm: List[Dict[str, Any]] = []
 
     try:
         for uid in resolved_ids:
-            # Si ya fue procesado en una llamada previa dentro de la misma sesión,
-            # reutilizar el resultado para no duplicar hallazgos ni puntajes.
             if uid in url_state.analyzed_items_by_id:
                 existing_item = url_state.analyzed_items_by_id[uid]
-                sanitized_results_for_llm.append(
-                    _build_sanitized_item_for_llm(existing_item)
-                )
+                sanitized_results_for_llm.append(_build_sanitized_item_for_llm(existing_item))
                 continue
 
             raw_url = prep_ctx.url_id_map[uid]
             masked_url = prep_ctx.masked_url_id_map.get(uid) or sanitize_url_for_external_llm(raw_url)[0]
 
-            try:
-                raw_analysis = analyzer_fn(raw_url)
-            except ValueError as val_err:
-                # Por ejemplo, puerto inválido en urllib.parse (http://dominio.com:99999) o IP malformada
-                unparseable_reason = (
-                    f"La dirección '{masked_url}' tiene un formato inválido y no pudo analizarse: {str(val_err)}"
-                )
-                ocr_warns = _match_ocr_warnings_for_url(
-                    raw_url, "no_identificado", prep_ctx.ocr_url_warnings
-                )
-                item_warns = [unparseable_reason]
-                for ow in ocr_warns:
-                    exp = ow.get("explanation")
-                    if exp and exp not in item_warns:
-                        item_warns.append(exp)
-                for w in item_warns:
-                    if w not in url_state.warnings:
-                        url_state.warnings.append(w)
-
-                item_res = UrlItemAnalysisResult(
-                    url_id=uid,
-                    raw_url=raw_url,
-                    masked_url=masked_url,
-                    estado_enlace="direccion_no_analizable",
-                    scheme="desconocido",
-                    domain="no_identificado",
-                    port=None,
-                    is_ip_address=False,
-                    has_punycode=False,
-                    has_userinfo=False,
-                    findings=[unparseable_reason],
-                    senales_encontradas=[],
-                    reglas_activadas=[],
-                    advertencias=item_warns,
-                    ocr_warnings=ocr_warns,
-                )
-                item_res.validate(allowed_raw_urls=prep_ctx.extracted_urls)
-                url_state.analyzed_items_by_id[uid] = item_res
-                sanitized_results_for_llm.append(_build_sanitized_item_for_llm(item_res))
-                continue
-
-            malformed_reason = _is_unparseable_or_malformed_url(raw_url, raw_analysis)
-            domain = raw_analysis.get("domain", "no_identificado")
-            ocr_warns = _match_ocr_warnings_for_url(raw_url, domain, prep_ctx.ocr_url_warnings)
-
-            if malformed_reason is not None:
-                item_warns = [malformed_reason]
-                for ow in ocr_warns:
-                    exp = ow.get("explanation")
-                    if exp and exp not in item_warns:
-                        item_warns.append(exp)
-                for w in item_warns:
-                    if w not in url_state.warnings:
-                        url_state.warnings.append(w)
-
-                item_res = UrlItemAnalysisResult(
-                    url_id=uid,
-                    raw_url=raw_url,
-                    masked_url=masked_url,
-                    estado_enlace="direccion_no_analizable",
-                    scheme=raw_analysis.get("scheme", "desconocido"),
-                    domain=domain,
-                    port=raw_analysis.get("port"),
-                    is_ip_address=bool(raw_analysis.get("is_ip_address", False)),
-                    has_punycode=bool(raw_analysis.get("has_punycode", False)),
-                    has_userinfo=bool(raw_analysis.get("has_userinfo", False)),
-                    findings=list(raw_analysis.get("findings", [])) + [malformed_reason],
-                    senales_encontradas=[],
-                    reglas_activadas=[],
-                    advertencias=item_warns,
-                    ocr_warnings=ocr_warns,
-                )
-                item_res.validate(allowed_raw_urls=prep_ctx.extracted_urls)
-                url_state.analyzed_items_by_id[uid] = item_res
-                sanitized_results_for_llm.append(_build_sanitized_item_for_llm(item_res))
-                continue
-
-            signals, activated_rules = _map_findings_to_signals_and_rules(raw_url, raw_analysis)
-            # Determinar si tiene señales de riesgo (REGLA-URL-01..05 o parámetros sensibles)
-            has_risk_signals = bool(activated_rules) or any(
-                s.id_regla == "INFO-URL-SENSITIVE-PARAMS" for s in signals
-            )
-            estado_enlace = (
-                "analizado_con_senales" if has_risk_signals else "analizado_sin_senales"
-            )
-
-            item_warns: List[str] = []
-            for f_str in raw_analysis.get("findings", []):
-                if "HTTPS" not in f_str:
-                    w_msg = f"URL [{domain}]: {f_str}"
-                    item_warns.append(w_msg)
-                    if w_msg not in url_state.warnings:
-                        url_state.warnings.append(w_msg)
-                    if w_msg not in prep_ctx.warnings:
-                        prep_ctx.warnings.append(w_msg)
-
-            for ow in ocr_warns:
-                exp = ow.get("explanation")
-                if exp:
-                    if exp not in item_warns:
-                        item_warns.append(exp)
-                    if exp not in url_state.warnings:
-                        url_state.warnings.append(exp)
-
-            if estado_enlace == "analizado_sin_senales":
-                if NON_GUARANTEE_WARNING not in item_warns:
-                    item_warns.append(NON_GUARANTEE_WARNING)
-                if NON_GUARANTEE_WARNING not in url_state.warnings:
-                    url_state.warnings.append(NON_GUARANTEE_WARNING)
-
-            item_res = UrlItemAnalysisResult(
-                url_id=uid,
+            item_res = _analyze_single_url_item(
+                uid=uid,
                 raw_url=raw_url,
                 masked_url=masked_url,
-                estado_enlace=estado_enlace,  # type: ignore[arg-type]
-                scheme=raw_analysis.get("scheme", "desconocido"),
-                domain=domain,
-                port=raw_analysis.get("port"),
-                is_ip_address=bool(raw_analysis.get("is_ip_address", False)),
-                has_punycode=bool(raw_analysis.get("has_punycode", False)),
-                has_userinfo=bool(raw_analysis.get("has_userinfo", False)),
-                findings=list(raw_analysis.get("findings", [])),
-                senales_encontradas=signals,
-                reglas_activadas=activated_rules,
-                advertencias=item_warns,
-                ocr_warnings=ocr_warns,
+                prep_ctx=prep_ctx,
+                url_state=url_state,
+                analyzer_fn=analyzer_fn,
             )
-            item_res.validate(allowed_raw_urls=prep_ctx.extracted_urls)
-            url_state.analyzed_items_by_id[uid] = item_res
+            _record_analyzed_item_in_session(item_res, uid, url_state, prep_ctx)
             sanitized_results_for_llm.append(_build_sanitized_item_for_llm(item_res))
 
-        # Sincronizar prep_ctx.url_details con los análisis realizados para compatibilidad
-        prep_ctx.url_details = [
-            it.to_engine_url_dict() for it in url_state.analyzed_items_by_id.values()
-        ]
-
-        # Determinar enlaces pendientes en la sesión (para que el modelo decida continuación si fue un lote parcial)
-        pending_ids = [
-            uid for uid in prep_ctx.url_id_map.keys()
-            if uid not in url_state.analyzed_items_by_id
-        ]
-
-        return {
-            "status": "ok",
-            "processed_count": len(sanitized_results_for_llm),
-            "total_session_links": len(prep_ctx.url_id_map),
-            "pending_url_ids": pending_ids,
-            "results": sanitized_results_for_llm,
-            "error_message": None,
-        }
+        return _build_compact_url_tool_response(sanitized_results_for_llm, prep_ctx, url_state)
 
     except ContractValidationError:
         raise
