@@ -560,6 +560,8 @@ def execute_tool_generar_pdf(
 
     report_dict: Dict[str, Any] = {
         "status": "success",
+        "execution_mode": "agent_orchestrated",
+        "input_mode": eval_state.input_mode,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "risk_assessment": {
             "level": eval_state.level,
@@ -573,7 +575,7 @@ def execute_tool_generar_pdf(
         "url_analysis": eval_state.unified_url_analyses,
         "prompt_injection_detected": has_injection,
         "prompt_injection_details": injection_details,
-        "limitations": ReportGenerator.LIMITATIONS,
+        "limitations": ReportGenerator.get_limitations("agent_orchestrated"),
         "recommendations": eval_state.recommendations,
         "non_technical_explanation": eval_state.explanation,
     }

@@ -154,7 +154,9 @@ def analyze_text(
             risk_classifier = RiskClassifier(policy)
             risk_data = risk_classifier.classify(cleaned_text, text_analysis, url_analyses)
             report_gen = ReportGenerator()
-            report = report_gen.generate_json_report(risk_data, text_analysis, url_analyses)
+            report = report_gen.generate_json_report(
+                risk_data, text_analysis, url_analyses, execution_mode="agent_orchestrated"
+            )
         else:
             report = run_pipeline(cleaned_text, policy)
 

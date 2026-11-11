@@ -147,6 +147,15 @@ def generate_pdf_report(report_data: Dict[str, Any]) -> bytes:
     timestamp = report_data.get("timestamp", "Fecha no especificada")
     input_mode = report_data.get("input_mode", "text")
     mode_label = "Captura de pantalla (OCR local)" if input_mode == "ocr_screenshot" else "Texto directo (Copiado/Pegado)"
+    is_orchestrated = (
+        "agent_orchestration" in report_data
+        or report_data.get("execution_mode") == "agent_orchestrated"
+    )
+    exec_label = (
+        "Orquesta de Agentes IA (API Gemini + herramientas locales)"
+        if is_orchestrated
+        else "Modo Local Determinístico (Sin Red)"
+    )
 
     meta_table_data = [
         [
@@ -154,7 +163,13 @@ def generate_pdf_report(report_data: Dict[str, Any]) -> bytes:
             Paragraph(str(timestamp), body_style),
             Paragraph("<b>Modalidad de Entrada:</b>", body_style),
             Paragraph(mode_label, body_style),
-        ]
+        ],
+        [
+            Paragraph("<b>Modo de Ejecución:</b>", body_style),
+            Paragraph(exec_label, body_style),
+            Paragraph("<b>Análisis de Enlaces:</b>", body_style),
+            Paragraph("Estático (sin visitas ni DNS/WHOIS)", body_style),
+        ],
     ]
     meta_table = Table(meta_table_data, colWidths=[100, 160, 120, 150])
     meta_table.setStyle(
@@ -265,7 +280,7 @@ def generate_pdf_report(report_data: Dict[str, Any]) -> bytes:
         story.append(Paragraph("🌐 Auditoría de Enlaces (Análisis Estático Seguro)", h2_style))
         story.append(Paragraph(
             "<b>Nota de Aislamiento:</b> Las direcciones se muestran como texto plano no clickeable. "
-            "No se realizaron conexiones a internet ni consultas a servidores externos.",
+            "El análisis de enlaces es estático: no se visitaron las URLs ni se realizaron consultas DNS o WHOIS.",
             disclaimer_style,
         ))
         story.append(Spacer(1, 4))
