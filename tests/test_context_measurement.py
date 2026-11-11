@@ -111,8 +111,19 @@ def test_baseline_scenario_1_text_without_links():
     assert "analizador_enlaces" not in res["agents_involved"]
     assert set(res["agents_involved"]) == {"orquestador", "preparador", "analizador_mensajes", "evaluador"}
     assert res["total_simulated_turns"] == 14
+    assert len(res["snapshots"]) == res["total_simulated_turns"]
+    for snap in res["snapshots"]:
+        assert snap["system_instruction"]["chars"] > 0
+        assert snap["tool_declarations"]["chars"] > 0
+        assert snap["contents"]["chars"] > 0
+        assert snap["total_request"]["chars"] == (
+            snap["system_instruction"]["chars"]
+            + snap["tool_declarations"]["chars"]
+            + snap["contents"]["chars"]
+        )
+    assert sum(snap["total_request"]["chars"] for snap in res["snapshots"]) == res["accumulated_request_chars"]
     # Reducción Tarea 6: depuración de SKILL.md en Preparador, Analizador de Mensajes y Evaluador
-    # (antes de Tarea 6 superaba 150000 chars; ahora se acota entre 80000 y 150000).
+    # (antes de Tarea 6 superaba 150000 chars; ahora se acota entre 80000 y 150000 como comprobación complementaria).
     assert 80000 < res["accumulated_request_chars"] < 150000
 
 
