@@ -46,6 +46,39 @@ __all__ = [
 ]
 
 
+def _is_url_analysis_work_complete(
+    session_ctx: PreparationSessionContext,
+    url_state: UrlAnalysisSessionState,
+) -> bool:
+    """
+    Evalúa determinísticamente si el trabajo del Agente Analizador de Enlaces ha
+    concluido basándose exclusivamente en el estado local validado.
+
+    Condiciones:
+    1. La herramienta `tool_analizar_url` debió ser invocada al menos una vez.
+    2. Si se produjo un error técnico irrecuperable en la herramienta (`url_state.tool_errors`),
+       el trabajo concluye (no hay acciones posteriores posibles para el especialista).
+    3. Si la sesión no contenía enlaces (`url_id_map` vacío), la invocación de `tool_analizar_url`
+       da por concluida la tarea (devolviendo `sin_enlaces`).
+    4. Todos los identificadores esperados en `session_ctx.url_id_map` deben estar
+       contabilizados en `url_state.analyzed_items_by_id`.
+    5. Si quedan identificadores pendientes de análisis, devuelve False para permitir
+       que el ciclo continúe dentro de los límites vigentes.
+    """
+    if "tool_analizar_url" not in url_state.tools_called:
+        return False
+
+    if url_state.tool_errors:
+        return True
+
+    expected_ids = set(session_ctx.url_id_map.keys())
+    if not expected_ids:
+        return True
+
+    analyzed_ids = set(url_state.analyzed_items_by_id.keys())
+    return expected_ids.issubset(analyzed_ids)
+
+
 class AnalizadorEnlacesAgent:
     """
     Agente Analizador de Enlaces ejecutado mediante el modelo de IA configurado,
@@ -128,6 +161,9 @@ class AnalizadorEnlacesAgent:
             session_ctx.masked_url_id_map,
         )
 
+        def _should_terminate_early() -> bool:
+            return _is_url_analysis_work_complete(session_ctx, url_state)
+
         run_agent_tool_loop(
             agent_name=self.name,
             system_instruction=self.build_system_instruction(),
@@ -139,6 +175,7 @@ class AnalizadorEnlacesAgent:
             model_name=self.model_name,
             max_tool_calls=4,
             max_elapsed_seconds=max_elapsed_seconds,
+            should_terminate_early=_should_terminate_early,
         )
 
         loaded_skill_names = list(self.loaded_skills.keys())

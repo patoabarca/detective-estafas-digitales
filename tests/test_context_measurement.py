@@ -125,8 +125,9 @@ def test_baseline_scenario_2_text_with_two_links():
 
     assert "analizador_enlaces" in res["agents_involved"]
     assert len(res["agents_involved"]) == 5
-    assert res["total_simulated_turns"] == 17
-    assert res["by_agent"]["analizador_enlaces"]["turns_count"] == 2
+    # Optimización Tarea 4: AnalizadorEnlaces finaliza anticipadamente en 1 turno (evita turno de resumen)
+    assert res["by_agent"]["analizador_enlaces"]["turns_count"] == 1
+    assert res["total_simulated_turns"] == 16
 
 
 def test_baseline_scenario_3_screenshot_ocr_with_link():
@@ -145,4 +146,6 @@ def test_baseline_scenario_3_screenshot_ocr_with_link():
 
     assert res["input_mode"] == "ocr_screenshot"
     assert res["by_agent"]["preparador"]["turns_count"] == 4
-    assert res["total_simulated_turns"] == 18
+    # Optimización Tarea 4: AnalizadorEnlaces finaliza en 1 turno, reduciendo turnos totales de 18 a 17
+    assert res["by_agent"]["analizador_enlaces"]["turns_count"] == 1
+    assert res["total_simulated_turns"] == 17
