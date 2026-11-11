@@ -12,18 +12,65 @@ from datetime import datetime, timezone
 import json
 from typing import Any, Dict, List
 
+try:
+    from scripts.url_analyzer import classify_url_risk_signals
+except ModuleNotFoundError:
+    from url_analyzer import classify_url_risk_signals  # type: ignore[no-redef]
+
 
 class ReportGenerator:
     """
     Genera reportes de evaluación en formato JSON y Markdown accesible.
     """
 
-    LIMITATIONS = [
-        "El análisis es puramente estático y local; no se realizaron peticiones de red, DNS ni consultas WHOIS.",
+    STATIC_URL_LIMITATION = (
+        "El análisis de enlaces es estático: no visita las URLs ni realiza consultas DNS ni WHOIS."
+    )
+    LOCAL_OCR_LIMITATION = (
+        "El procesamiento OCR de capturas de pantalla se realiza localmente en memoria."
+    )
+    MODE_EXECUTION_LIMITATIONS: Dict[str, str] = {
+        "local": (
+            "Modo Local Determinístico: todo el análisis se ejecutó localmente sin conexión de red ni llamadas a APIs externas."
+        ),
+        "agent_orchestrated": (
+            "Modo Orquesta de Agentes IA: la coordinación agéntica utilizó la API externa de Gemini aplicando "
+            "ocultamiento preventivo de datos sensibles (sin garantizar su eliminación total); "
+            "los detectores heurísticos, el análisis de enlaces y el OCR se ejecutaron localmente."
+        ),
+        "shared": (
+            "En Modo Local Determinístico el flujo se ejecuta sin red; en Modo Orquesta de Agentes IA la coordinación "
+            "utiliza la API externa de Gemini."
+        ),
+    }
+    COMMON_LIMITATIONS: List[str] = [
         "La clasificación se basa en heurísticas y reglas documentadas sobre patrones conocidos.",
         "La ausencia de indicadores conocidos de fraude NO garantiza que el mensaje o enlace sea legítimo.",
         "No se analizan archivos ejecutables ni adjuntos binarios en este MVP.",
     ]
+
+    LIMITATIONS = [
+        STATIC_URL_LIMITATION,
+        LOCAL_OCR_LIMITATION,
+        MODE_EXECUTION_LIMITATIONS["shared"],
+        *COMMON_LIMITATIONS,
+    ]
+
+    @classmethod
+    def get_limitations(cls, execution_mode: str = "shared") -> List[str]:
+        """
+        Retorna la lista de limitaciones adaptada al modo de ejecución real cuando está
+        disponible ('local', 'agent_orchestrated') o una redacción compartida válida para ambos.
+        """
+        mode_lim = cls.MODE_EXECUTION_LIMITATIONS.get(
+            execution_mode, cls.MODE_EXECUTION_LIMITATIONS["shared"]
+        )
+        return [
+            mode_lim,
+            cls.STATIC_URL_LIMITATION,
+            cls.LOCAL_OCR_LIMITATION,
+            *cls.COMMON_LIMITATIONS,
+        ]
 
     @staticmethod
     def get_recommendations(risk_level: str, has_urls: bool, has_creds: bool) -> List[str]:
@@ -75,22 +122,38 @@ class ReportGenerator:
                 "Este mensaje presenta un RIESGO ALTO de ser una estafa o intento de engaño digital."
             ]
             has_threat = any(i.get("id") == "ING-AMENAZA-BLOQUEO" for i in indicators)
+            has_urgency = any(i.get("id") == "ING-URGENCIA-ARTIFICIAL" for i in indicators)
             has_cred = any(i.get("id") == "FRA-CAPTURA-CREDENCIALES" for i in indicators)
             has_fee = any(i.get("id") == "FRA-PAGO-ANTICIPADO" for i in indicators)
+            has_urls = len(url_analyses) > 0
+            has_url_signals = any(
+                classify_url_risk_signals(u)["is_suspicious_url"] for u in url_analyses
+            )
 
             if has_threat and has_cred:
-                parts.append(
-                    "Están utilizando la táctica del miedo y la urgencia (diciéndote que van a bloquear tu cuenta) "
-                    "para que te asustes y entregues tus claves o códigos de seguridad en una página falsa."
+                tactic_desc = (
+                    "una amenaza de bloqueo y presión de tiempo"
+                    if has_urgency
+                    else "una amenaza de bloqueo"
                 )
+                target_desc = (
+                    "ingreses a un enlace y entregues tus claves o códigos de seguridad"
+                    if has_urls
+                    else "entregues tus claves o códigos de seguridad"
+                )
+                msg_part = f"El mensaje utiliza {tactic_desc} para pedirte que {target_desc}."
+                if has_url_signals:
+                    msg_part += " Además, el análisis estático detectó anomalías estructurales en el enlace."
+                parts.append(msg_part)
             elif has_fee:
                 parts.append(
                     "Te prometen un premio, paquete o beneficio, pero te piden pagar una suma previa para liberarlo. "
                     "Esta es la clásica estafa del pago anticipado: el premio no existe y perderás el dinero transferido."
                 )
-            elif url_analyses:
+            elif has_url_signals:
                 parts.append(
-                    "El mensaje intenta conducirte a una dirección web sospechosa que no coincide con los sitios oficiales."
+                    "El mensaje incluye un enlace con señales sintácticas inusuales detectadas de forma estática; "
+                    "el análisis sintáctico por sí solo no verifica ni descarta si el sitio es auténtico."
                 )
             else:
                 parts.append(
@@ -132,6 +195,7 @@ class ReportGenerator:
         risk_data: Dict[str, Any],
         text_analysis: Dict[str, Any],
         url_analyses: List[Dict[str, Any]],
+        execution_mode: str = "local",
     ) -> Dict[str, Any]:
         """
         Genera el reporte estructurado en formato diccionario compatible con config/result_schema.json.
@@ -163,7 +227,7 @@ class ReportGenerator:
             "url_analysis": url_analyses,
             "prompt_injection_detected": injection_detected,
             "prompt_injection_details": injection_details,
-            "limitations": self.LIMITATIONS,
+            "limitations": self.get_limitations(execution_mode),
             "recommendations": recommendations,
             "non_technical_explanation": explanation,
         }

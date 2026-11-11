@@ -102,3 +102,24 @@ Desglose en **ESC-01**:
 - **Limitaciones pendientes:**
   - Los escenarios simulados emplean `MockGeminiClient`; la respuesta del modelo real de Gemini ante las instrucciones abreviadas todavía no fue validada (se excluyó `test_real_gemini_api`), y las métricas simuladas de caracteres y bytes no demuestran ahorro real de tokens ni equivalencia de comportamiento de Gemini.
   - Se mantienen intactas las limitaciones funcionales ya documentadas en la Tarea 5 (heurística de ccSLD de 2 segmentos en `check_misleading_subdomains`, ausencia de lectura dinámica en runtime de `references/`).
+
+---
+
+## 6. Comprobación Manual Posterior a la Tarea 6 y Correcciones (`fix/metricas-y-textos-informe`)
+
+Durante la comprobación manual posterior a la integración de la Tarea 6 se observó un caso real ejecutado con Gemini API que completó el flujo con **12 respuestas exitosas** (`orquestador`: 5, `preparador`: 2, `analizador_mensajes`: 2, `analizador_enlaces`: 1, `evaluador`: 2) y **26.180 tokens** registrados (24.996 de entrada + 1.184 de salida), con un fallo transitorio recuperado mediante 1 reintento en `evaluador` cuyo consumo previo no estuvo disponible.
+
+> [!NOTE]
+> Esta observación corresponde exclusivamente a **un caso real exitoso con un fallo transitorio recuperado**. **No constituye una garantía general** de comportamiento ante otros mensajes o fallos de red, ni **demuestra ahorro de tokens respecto de versiones anteriores** (no existe una línea base equivalente medida en vivo sobre versiones previas).
+
+A raíz de las inconsistencias detectadas en esa revisión manual, se implementaron tres correcciones en la rama `fix/metricas-y-textos-informe` (sin modificar reglas, pesos, umbrales ni niveles de riesgo):
+
+1. **Conteo de llamadas y reintentos (`agents/common/llm_client.py`, `agents/common/traceability.py`, `app.py`):**
+   - Anteriormente, al reintentar un error transitorio (`429` o error de red) en el primer intento de un turno, el cliente solo registraba `agent_retry` y no `record_llm_call_failure(..., is_retry=False)`, provocando que la respuesta exitosa del reintento quedara marcada con `is_retry=True` y fuera omitida del conteo de llamadas (`Evaluador = 1`, total `11`).
+   - Se registra el intento fallido antes de dormir/reintentar y se diferencia explícitamente en métricas e interfaz (`format_usage_metrics_lines`) entre **respuestas exitosas** (contadas por el cliente), **intentos fallidos sin consumo disponible** y **reintentos del cliente**, aclarando que son **eventos del cliente** y no un conteo verificado de solicitudes HTTP internas del SDK.
+2. **Explicación fundamentada sin afirmar "página falsa" (`scripts/report_generator.py`):**
+   - Cuando el análisis estático de URL devuelve `analizado_sin_senales`, `build_non_technical_explanation` ya no afirma que el enlace pertenezca a una `"página falsa"`, sino que describe únicamente las señales efectivamente detectadas (amenaza, presión de tiempo, presencia de enlace y pedido de claves o códigos) manteniendo intactos el puntaje y el nivel de riesgo.
+3. **Distinción red/local y análisis estático de enlaces (`scripts/report_generator.py`, `web/analysis_adapter.py`, `agents/evaluador/result_builder.py`, `agents/tools/evaluation_tools.py`, `web/pdf_exporter.py`):**
+   - Se separaron las limitaciones metodológicas compartidas (`get_limitations(execution_mode)`) y los metadatos del PDF para reflejar con precisión si la ejecución fue **Modo Local Determinístico (sin red)** o **Orquesta de Agentes IA (con llamadas externas a Gemini API y herramientas locales)**, manteniendo explícito en ambos que el análisis de enlaces es estático (sin visitar URLs ni consultar DNS/WHOIS) y el OCR es 100% local.
+4. **Cobertura en pruebas offline:** Se añadió `tests/test_fix_metricas_y_textos_informe.py` (con simulación de 12 respuestas exitosas + 1 fallo transitorio recuperado = 26.180 tokens, verificación de explicación sin `"página falsa"` y validación de limitaciones por modo y PDF).
+

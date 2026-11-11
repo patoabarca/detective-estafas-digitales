@@ -367,6 +367,12 @@ def run_agent_tool_loop(
 
                         if attempt == 0:
                             if wait_seconds + 1.5 <= rem_for_retry:
+                                tracer.record_llm_call_failure(
+                                    agent=agent_name,
+                                    model=resolved_model,
+                                    error_type="RateLimit429",
+                                    is_retry=False,
+                                )
                                 tracer.record(
                                     agent=agent_name,
                                     event_type="agent_retry",
@@ -419,6 +425,12 @@ def run_agent_tool_loop(
                     # 3. Fallo transitorio de red (503 / 504 / UNAVAILABLE / DEADLINE_EXCEEDED)
                     if err_info["is_network"] and attempt == 0:
                         if rem_for_retry > 2.0:
+                            tracer.record_llm_call_failure(
+                                agent=agent_name,
+                                model=resolved_model,
+                                error_type=call_exc.__class__.__name__ or "TransientNetworkError",
+                                is_retry=False,
+                            )
                             tracer.record(
                                 agent=agent_name,
                                 event_type="agent_retry",

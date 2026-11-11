@@ -336,8 +336,8 @@ def render_url_audit(url_analyses: List[Dict[str, Any]]) -> None:
 
     st.markdown("### 🌐 Auditoría de Enlaces (Análisis Estático Seguro)")
     st.caption(
-        "🔒 **Cero Conexión a Internet:** Las direcciones se muestran como texto plano no clickeable. "
-        "No se realizaron conexiones, peticiones DNS ni descargas hacia los servidores remotos."
+        "🔒 **Enlaces no visitados (análisis estático):** Las direcciones se muestran como texto plano no clickeable. "
+        "No se visitaron las URLs ni se realizaron consultas DNS, WHOIS ni descargas hacia esos servidores."
     )
 
     for item in url_analyses:

@@ -210,6 +210,8 @@ class AgentTracer:
         """Calcula el resumen de consumo y cobertura sobre una lista de llamadas."""
         logical_calls = [r for r in records if not r.is_retry]
         retries = [r for r in records if r.is_retry]
+        successful_calls = [r for r in records if r.success]
+        failed_attempts = [r for r in records if not r.success]
         total_calls_count = len(records)
         logical_calls_count = len(logical_calls)
 
@@ -249,6 +251,8 @@ class AgentTracer:
 
         return {
             "llm_calls_total": logical_calls_count,
+            "llm_successful_calls_total": len(successful_calls),
+            "llm_failed_attempts_total": len(failed_attempts),
             "llm_retries_total": len(retries),
             "llm_total_attempts": total_calls_count,
             "tool_calls_total": tool_calls,
@@ -304,7 +308,10 @@ class AgentTracer:
             # Para compatibilidad con interfaces que acceden directamente a keys simples por agente:
             by_agent[ag] = {
                 "llm_calls": ag_summary["llm_calls_total"],
+                "llm_successful_calls": ag_summary["llm_successful_calls_total"],
+                "llm_failed_attempts": ag_summary["llm_failed_attempts_total"],
                 "llm_retries": ag_summary["llm_retries_total"],
+                "llm_total_attempts": ag_summary["llm_total_attempts"],
                 "tool_calls": ag_tools,
                 "prompt_tokens": ag_summary["prompt_tokens_total"],
                 "output_tokens": ag_summary["output_tokens_total"],
@@ -358,3 +365,65 @@ class AgentTracer:
     def get_llm_calls(self) -> List[Dict[str, Any]]:
         """Retorna la lista detallada de registros de llamadas individuales al LLM."""
         return [c.to_dict() for c in self._llm_calls]
+
+
+def format_usage_metrics_lines(usage_data: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Formatea líneas legibles de resumen global y desglose por agente a partir de `usage_metrics`,
+    diferenciando respuestas exitosas, intentos fallidos y reintentos registrados en el cliente
+    (sin atribuirlos a solicitudes HTTP internas del SDK).
+    """
+    display_dict = usage_data.get("display") or {}
+    tot_display = display_dict.get("total_tokens") or (
+        str(usage_data.get("total_tokens")) if usage_data.get("total_tokens") is not None else "no disponible"
+    )
+    p_display = display_dict.get("prompt_tokens") or (
+        str(usage_data.get("prompt_tokens_total")) if usage_data.get("prompt_tokens_total") is not None else "no disponible"
+    )
+    o_display = display_dict.get("output_tokens") or (
+        str(usage_data.get("output_tokens_total")) if usage_data.get("output_tokens_total") is not None else "no disponible"
+    )
+
+    succ_calls = usage_data.get("llm_successful_calls_total", usage_data.get("llm_calls_total", 0))
+    failed_attempts = usage_data.get("llm_failed_attempts_total", 0)
+    retries_count = usage_data.get("llm_retries_total", 0)
+
+    extra_parts: List[str] = []
+    if failed_attempts:
+        extra_parts.append(f"`{failed_attempts}` intento(s) fallido(s) sin consumo disponible")
+    if retries_count:
+        extra_parts.append(f"`{retries_count}` reintento(s) del cliente")
+    extra_txt = f" ({', '.join(extra_parts)})" if extra_parts else ""
+
+    summary_line = (
+        f"- **Consumo acumulado de la solicitud (eventos del cliente):** "
+        f"`{succ_calls}` respuestas exitosas{extra_txt}, "
+        f"`{usage_data.get('tool_calls_total', 0)}` llamadas a herramientas, "
+        f"`{tot_display}` tokens totales "
+        f"(`{p_display}` entrada + `{o_display}` salida)."
+    )
+
+    by_agent_line = ""
+    by_agent = usage_data.get("by_agent") or {}
+    if by_agent:
+        agent_parts: List[str] = []
+        for ag_name, ag_m in by_agent.items():
+            ag_disp = ag_m.get("display") or {}
+            ag_tot = ag_disp.get("total_tokens") or (
+                str(ag_m.get("total_tokens")) if ag_m.get("total_tokens") is not None else "no disponible"
+            )
+            ag_succ = ag_m.get("llm_successful_calls", ag_m.get("llm_calls", 0))
+            ag_failed = ag_m.get("llm_failed_attempts", 0)
+            ag_retries = ag_m.get("llm_retries", 0)
+            ag_extra = []
+            if ag_failed:
+                ag_extra.append(f"{ag_failed} fallo(s)")
+            if ag_retries:
+                ag_extra.append(f"{ag_retries} reintento(s)")
+            ag_extra_txt = f" ({', '.join(ag_extra)})" if ag_extra else ""
+            agent_parts.append(
+                f"`{ag_name}`: {ag_succ} resp. exitosas{ag_extra_txt} / {ag_m.get('tool_calls', 0)} tools / {ag_tot} tokens"
+            )
+        by_agent_line = f"- **Desglose por agente:** {' • '.join(agent_parts)}"
+
+    return {"summary_line": summary_line, "by_agent_line": by_agent_line}
